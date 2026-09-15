@@ -1,88 +1,78 @@
 import Database from 'better-sqlite3';
 
-export interface AuthenticatedUser {
-  telegram_id: number;
-  phone_number: string;
-  name: string;
+export interface WorkerSession {
+  max_user_id: number;
+  login: string;
+  token: string;
+  expires_at: string;
   created_at: string;
   updated_at: string;
 }
 
-class UserDatabase {
+class WorkerDatabase {
   private db: Database.Database;
 
-  constructor(dbPath: string = './users.db') {
+  constructor(dbPath: string = './workers.db') {
     this.db = new Database(dbPath);
     this.initDatabase();
   }
 
   private initDatabase() {
     this.db.exec(`
-      CREATE TABLE IF NOT EXISTS authenticated_users (
-        telegram_id INTEGER PRIMARY KEY,
-        phone_number TEXT NOT NULL,
-        name TEXT NOT NULL,
+      CREATE TABLE IF NOT EXISTS worker_sessions (
+        max_user_id INTEGER PRIMARY KEY,
+        login TEXT NOT NULL,
+        token TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
       )
     `);
-
-    // Create index for faster lookups
-    this.db.exec(`
-      CREATE INDEX IF NOT EXISTS idx_phone_number
-      ON authenticated_users(phone_number)
-    `);
   }
 
   /**
-   * Save or update user authentication data
+   * Save or update a worker's API session (token + expiry)
    */
-  saveUser(telegramId: number, phoneNumber: string, name: string): void {
+  saveSession(
+    maxUserId: number,
+    login: string,
+    token: string,
+    expiresAt: string,
+  ): void {
     const stmt = this.db.prepare(`
-      INSERT INTO authenticated_users
-        (telegram_id, phone_number, name, updated_at)
-      VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-      ON CONFLICT(telegram_id) DO UPDATE SET
-        phone_number = excluded.phone_number,
-        name = excluded.name,
+      INSERT INTO worker_sessions
+        (max_user_id, login, token, expires_at, updated_at)
+      VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+      ON CONFLICT(max_user_id) DO UPDATE SET
+        login = excluded.login,
+        token = excluded.token,
+        expires_at = excluded.expires_at,
         updated_at = CURRENT_TIMESTAMP
     `);
 
-    stmt.run(telegramId, phoneNumber, name);
+    stmt.run(maxUserId, login, token, expiresAt);
   }
 
   /**
-   * Get authenticated user by Telegram ID
+   * Get a worker's session by their Max user id
    */
-  getUser(telegramId: number): AuthenticatedUser | null {
+  getSession(maxUserId: number): WorkerSession | null {
     const stmt = this.db.prepare(`
-      SELECT * FROM authenticated_users WHERE telegram_id = ?
+      SELECT * FROM worker_sessions WHERE max_user_id = ?
     `);
 
-    return stmt.get(telegramId) as AuthenticatedUser | null;
+    return stmt.get(maxUserId) as WorkerSession | null;
   }
 
   /**
-   * Check if user is authenticated
+   * Delete a worker's session
    */
-  isAuthenticated(telegramId: number): boolean {
+  deleteSession(maxUserId: number): void {
     const stmt = this.db.prepare(`
-      SELECT COUNT(*) as count FROM authenticated_users WHERE telegram_id = ?
+      DELETE FROM worker_sessions WHERE max_user_id = ?
     `);
 
-    const result = stmt.get(telegramId) as { count: number };
-    return result.count > 0;
-  }
-
-  /**
-   * Delete user authentication
-   */
-  deleteUser(telegramId: number): void {
-    const stmt = this.db.prepare(`
-      DELETE FROM authenticated_users WHERE telegram_id = ?
-    `);
-
-    stmt.run(telegramId);
+    stmt.run(maxUserId);
   }
 
   /**
@@ -94,11 +84,11 @@ class UserDatabase {
 }
 
 // Singleton instance
-let dbInstance: UserDatabase | null = null;
+let dbInstance: WorkerDatabase | null = null;
 
-export function getUserDatabase(): UserDatabase {
+export function getWorkerDatabase(): WorkerDatabase {
   if (!dbInstance) {
-    dbInstance = new UserDatabase();
+    dbInstance = new WorkerDatabase();
   }
   return dbInstance;
 }
