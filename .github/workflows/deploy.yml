@@ -1,0 +1,30 @@
+name: Deploy to VPS
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          port: ${{ secrets.VPS_PORT }}
+          username: ${{ secrets.VPS_USERNAME }}
+          password: ${{ secrets.VPS_PASSWORD }}
+          envs: GH_PAT
+          script: |
+            export NVM_DIR="$HOME/.nvm"
+            [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+            cd ~/ads-maxbot-workers
+            git pull https://rikster-r:$GH_PAT@github.com/esDesperado/TODO_REPO_NAME.git main
+            npm ci
+            npm run build
+            pm2 restart ads-maxbot-workers
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
