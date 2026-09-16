@@ -1,5 +1,6 @@
 import { bot } from './bot.js';
 import { handleStart, handleTextMessage } from './handlers.js';
+import { handleLogoutCancel, handleLogoutCommand, handleLogoutConfirm } from './auth.js';
 import { handleRequestsList, handleTabAction } from './requests/list.js';
 import {
   handleAddMediaButton,
@@ -19,7 +20,11 @@ import { bootstrapRealtimeSubscriptions } from './lib/realtime.js';
 bot.on('bot_started', handleStart);
 bot.command('start', handleStart);
 bot.command('requests', handleRequestsList);
+bot.command('logout', handleLogoutCommand);
 bot.on('message_created', handleTextMessage);
+
+bot.action('lo:y', handleLogoutConfirm);
+bot.action('lo:n', handleLogoutCancel);
 
 bot.action(/^rl:(new|accepted|completed)$/, (ctx) =>
   handleTabAction(ctx, ctx.match![1] as 'new' | 'accepted' | 'completed'),
@@ -43,6 +48,7 @@ bot.action(/^rb:(\d+)$/, (ctx) => handleBackToDetail(ctx, Number(ctx.match![1]))
 bot.api.setMyCommands([
   { name: 'start', description: 'Авторизация' },
   { name: 'requests', description: 'Мои заявки' },
+  { name: 'logout', description: 'Выход' },
 ]);
 
 bootstrapRealtimeSubscriptions();

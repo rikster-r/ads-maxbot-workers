@@ -1,10 +1,13 @@
-import { BotContext, BotState } from './bot.js';
+import { Keyboard } from '@maxhub/max-bot-api';
+import { ackCallback, BotContext, BotState, resetSession } from './bot.js';
 import { getWorkerDatabase } from './db.js';
 import { loginToAPI, getProfile } from './lib/apiFunctions.js';
 import { isUser } from './constants/roles.js';
-import { subscribeUserChannel } from './lib/realtime.js';
+import { subscribeUserChannel, unsubscribeUserChannel } from './lib/realtime.js';
 import { handleRequestsList } from './requests/list.js';
 import { logger } from './logger.js';
+
+const { inlineKeyboard, button } = Keyboard;
 
 const TOKEN_TTL_MS = 24 * 60 * 60 * 1000; // 24h
 
@@ -102,4 +105,44 @@ export async function handlePasswordInput(ctx: BotContext, text: string) {
   if (profile && !isUser(profile.role)) {
     await ctx.reply('Извините, бот доступен только для исполнителей');
   }
+}
+
+function buildLogoutConfirmKeyboard() {
+  return inlineKeyboard([[button.callback('Да', 'lo:y'), button.callback('Отмена', 'lo:n')]]);
+}
+
+export async function handleLogoutCommand(ctx: BotContext) {
+  const userId = ctx.user?.user_id;
+  if (!userId || !isLoggedIn(userId)) {
+    await ctx.reply('Вы не авторизованы.');
+    return;
+  }
+
+  await ctx.reply('Вы уверены, что хотите выйти?', {
+    attachments: [buildLogoutConfirmKeyboard()],
+  });
+}
+
+export async function handleLogoutConfirm(ctx: BotContext) {
+  const userId = ctx.user?.user_id;
+  if (!userId) {
+    await ackCallback(ctx);
+    return;
+  }
+
+  const db = getWorkerDatabase();
+  const session = db.getSession(userId);
+  if (session?.ads_user_id) {
+    unsubscribeUserChannel(session.ads_user_id);
+  }
+  db.deleteSession(userId);
+  resetSession(ctx);
+
+  await ctx.editMessage({ text: '✅ Вы вышли из системы.', attachments: null });
+  await ackCallback(ctx);
+}
+
+export async function handleLogoutCancel(ctx: BotContext) {
+  await ctx.editMessage({ text: 'Действие отменено.', attachments: null });
+  await ackCallback(ctx);
 }

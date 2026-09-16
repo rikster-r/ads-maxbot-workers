@@ -1,8 +1,6 @@
 import { ackCallback, BotContext } from '../bot.js';
-import { getWorkerDatabase, type WorkerSession as StoredWorkerSession } from '../db.js';
-import { getProfile } from '../lib/apiFunctions.js';
+import { getWorkerDatabase } from '../db.js';
 import { isUser } from '../constants/roles.js';
-import { subscribeUserChannel } from '../lib/realtime.js';
 import { tabLabels, userStatusMap } from '../constants/requestStatus.js';
 import { getFullHouseAddress } from '../lib/houses.js';
 import { getCachedUserRequests } from './cache.js';
@@ -19,32 +17,6 @@ export interface WorkerSession {
 const NOT_A_FIELD_WORKER_MESSAGE = 'Извините, бот доступен только для исполнителей';
 
 /**
- * Backfills the ADS profile (ads_user_id/role/name) for sessions created
- * before profile fetching existed — without this, a worker who logged in
- * previously is stuck: /start says they're already authorized, but the
- * requests feature has no role to check and would otherwise ask them to
- * log in again.
- */
-async function ensureProfile(
-  maxUserId: number,
-  session: StoredWorkerSession,
-): Promise<StoredWorkerSession | null> {
-  if (session.ads_user_id && session.role) return session;
-
-  const profile = await getProfile(session.token);
-  if (!profile) return null;
-
-  const db = getWorkerDatabase();
-  db.saveProfile(maxUserId, profile.id, profile.role, profile.name);
-
-  if (isUser(profile.role)) {
-    subscribeUserChannel(profile.id);
-  }
-
-  return db.getSession(maxUserId);
-}
-
-/**
  * Guards any /requests entry point or req:* action: not logged in, role isn't
  * a field worker, or session expired all short-circuit here.
  */
@@ -56,14 +28,13 @@ export async function requireFieldWorker(ctx: BotContext): Promise<WorkerSession
   }
 
   const db = getWorkerDatabase();
-  let session = db.getSession(maxUserId);
+  const session = db.getSession(maxUserId);
   if (!session || new Date(session.expires_at).getTime() <= Date.now()) {
     await ctx.reply('🔐 Сессия истекла, авторизуйтесь заново: /start');
     return null;
   }
 
-  session = await ensureProfile(maxUserId, session);
-  if (!session?.ads_user_id || !session.role) {
+  if (!session.ads_user_id || !session.role) {
     await ctx.reply('🔐 Не удалось получить профиль. Авторизуйтесь заново: /start');
     return null;
   }

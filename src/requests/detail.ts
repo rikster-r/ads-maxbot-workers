@@ -79,7 +79,11 @@ async function computeBlockedByActiveRequest(
   session: WorkerSession,
   request: RequestRecord,
 ): Promise<boolean> {
-  if (request.status === 'Отправлено исполнителю') return false;
+  // Only relevant while the request is still actionable — a finished/cancelled/
+  // closed request, or one not yet accepted, can't be blocked by anything.
+  if (!inWorkStatuses.includes(request.status) || request.status === 'Отправлено исполнителю') {
+    return false;
+  }
 
   const allRequests = await getUserRequests(session.token, session.adsUserId);
   if (!allRequests) return false;
