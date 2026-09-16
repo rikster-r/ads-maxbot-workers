@@ -1,9 +1,12 @@
 import { BotContext, BotState } from './bot.js';
 import { getWorkerDatabase } from './db.js';
-import { loginToAPI } from './lib/apiFunctions.js';
+import { loginToAPI, getProfile } from './lib/apiFunctions.js';
+import { isUser } from './constants/roles.js';
+import { subscribeUserChannel } from './lib/realtime.js';
+import { handleRequestsList } from './requests/list.js';
 import { logger } from './logger.js';
 
-const TOKEN_TTL_MS = 48 * 60 * 60 * 1000; // 48h
+const TOKEN_TTL_MS = 24 * 60 * 60 * 1000; // 24h
 
 /**
  * Whether this Max user has a saved API token that hasn't expired yet
@@ -70,8 +73,8 @@ export async function handlePasswordInput(ctx: BotContext, text: string) {
 
   const expiresAt = new Date(Date.now() + TOKEN_TTL_MS).toISOString();
 
+  const db = getWorkerDatabase();
   try {
-    const db = getWorkerDatabase();
     db.saveSession(userId, login, token, expiresAt);
   } catch (error) {
     logger.error({ err: error }, 'Error saving worker session');
@@ -82,5 +85,21 @@ export async function handlePasswordInput(ctx: BotContext, text: string) {
   ctx.session.state = BotState.IDLE;
   ctx.session.login = null;
 
+  const profile = await getProfile(token);
+  if (profile) {
+    db.saveProfile(userId, profile.id, profile.role, profile.name);
+
+    if (isUser(profile.role)) {
+      subscribeUserChannel(profile.id);
+      await ctx.reply('✅ Авторизация успешно завершена!');
+      await handleRequestsList(ctx);
+      return;
+    }
+  }
+
   await ctx.reply('✅ Авторизация успешно завершена!');
+
+  if (profile && !isUser(profile.role)) {
+    await ctx.reply('Извините, бот доступен только для исполнителей');
+  }
 }

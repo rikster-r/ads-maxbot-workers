@@ -7,6 +7,9 @@ export interface WorkerSession {
   expires_at: string;
   created_at: string;
   updated_at: string;
+  ads_user_id: number | null;
+  role: string | null;
+  name: string | null;
 }
 
 class WorkerDatabase {
@@ -28,6 +31,22 @@ class WorkerDatabase {
         updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
       )
     `);
+
+    const existingColumns = new Set(
+      (this.db.prepare('PRAGMA table_info(worker_sessions)').all() as { name: string }[]).map(
+        (column) => column.name,
+      ),
+    );
+
+    for (const [column, definition] of [
+      ['ads_user_id', 'INTEGER'],
+      ['role', 'TEXT'],
+      ['name', 'TEXT'],
+    ] as const) {
+      if (!existingColumns.has(column)) {
+        this.db.exec(`ALTER TABLE worker_sessions ADD COLUMN ${column} ${definition}`);
+      }
+    }
   }
 
   /**
@@ -62,6 +81,33 @@ class WorkerDatabase {
     `);
 
     return stmt.get(maxUserId) as WorkerSession | null;
+  }
+
+  /**
+   * Save the ADS profile (ads user id, role, name) fetched after login
+   */
+  saveProfile(maxUserId: number, adsUserId: number, role: string, name: string): void {
+    const stmt = this.db.prepare(`
+      UPDATE worker_sessions
+      SET ads_user_id = ?, role = ?, name = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE max_user_id = ?
+    `);
+
+    stmt.run(adsUserId, role, name, maxUserId);
+  }
+
+  /**
+   * All non-expired sessions belonging to field-worker roles, used to
+   * re-subscribe Pusher channels after a process restart
+   */
+  getActiveFieldWorkerSessions(roles: string[]): WorkerSession[] {
+    const placeholders = roles.map(() => '?').join(', ');
+    const stmt = this.db.prepare(`
+      SELECT * FROM worker_sessions
+      WHERE expires_at > ? AND ads_user_id IS NOT NULL AND lower(role) IN (${placeholders})
+    `);
+
+    return stmt.all(new Date().toISOString(), ...roles) as WorkerSession[];
   }
 
   /**

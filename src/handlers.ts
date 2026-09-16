@@ -5,6 +5,7 @@ import {
   handleLoginInput,
   handlePasswordInput,
 } from './auth.js';
+import { handleIncomingComment, handleIncomingMedia } from './requests/detail.js';
 
 export async function handleStart(ctx: BotContext) {
   resetSession(ctx);
@@ -23,6 +24,12 @@ export async function handleStart(ctx: BotContext) {
 
 export async function handleTextMessage(ctx: BotContext) {
   const state = ctx.session.state;
+
+  if (state === BotState.WAITING_MEDIA) {
+    await handleIncomingMedia(ctx);
+    return;
+  }
+
   const text = ctx.message?.body?.text;
   if (!text) return;
 
@@ -33,6 +40,10 @@ export async function handleTextMessage(ctx: BotContext) {
 
     case BotState.WAITING_PASSWORD:
       await handlePasswordInput(ctx, text);
+      break;
+
+    case BotState.WAITING_COMMENT:
+      await handleIncomingComment(ctx, text);
       break;
 
     default:

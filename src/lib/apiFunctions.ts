@@ -33,9 +33,6 @@ export async function loginToAPI(
   }
 }
 
-/**
- * Not used yet — kept for future work that needs the authenticated user's data.
- */
 export async function getProfile(token: string): Promise<User | null> {
   try {
     const response = await fetch(`${process.env.API_URL}/auth/profile`, {

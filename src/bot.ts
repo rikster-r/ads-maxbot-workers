@@ -26,6 +26,8 @@ export enum BotState {
   IDLE = 'idle',
   WAITING_LOGIN = 'waiting_login',
   WAITING_PASSWORD = 'waiting_password',
+  WAITING_COMMENT = 'waiting_comment',
+  WAITING_MEDIA = 'waiting_media',
 }
 
 // The SDK defaults its internal client (getMyInfo, sendMessage, etc.) to
@@ -42,4 +44,13 @@ export function resetSession(ctx: BotContext) {
     state: BotState.IDLE,
     login: null,
   };
+}
+
+/**
+ * Acknowledges a callback button press. The MAX API rejects
+ * answerOnCallback with neither `message` nor `notification` set (400
+ * "proto.payload"), so a silent ack still needs a non-empty notification.
+ */
+export function ackCallback(ctx: BotContext, notification = '✓') {
+  return ctx.answerOnCallback({ notification });
 }

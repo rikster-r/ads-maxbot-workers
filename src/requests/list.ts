@@ -1,0 +1,141 @@
+import { ackCallback, BotContext } from '../bot.js';
+import { getWorkerDatabase, type WorkerSession as StoredWorkerSession } from '../db.js';
+import { getProfile } from '../lib/apiFunctions.js';
+import { isUser } from '../constants/roles.js';
+import { subscribeUserChannel } from '../lib/realtime.js';
+import { tabLabels, userStatusMap } from '../constants/requestStatus.js';
+import { getFullHouseAddress } from '../lib/houses.js';
+import { getCachedUserRequests } from './cache.js';
+import { buildListKeyboard } from './keyboards.js';
+import type { RequestRecord } from '../lib/requestsApi.js';
+
+type Tab = 'new' | 'accepted' | 'completed';
+
+export interface WorkerSession {
+  token: string;
+  adsUserId: number;
+}
+
+const NOT_A_FIELD_WORKER_MESSAGE = 'Извините, бот доступен только для исполнителей';
+
+/**
+ * Backfills the ADS profile (ads_user_id/role/name) for sessions created
+ * before profile fetching existed — without this, a worker who logged in
+ * previously is stuck: /start says they're already authorized, but the
+ * requests feature has no role to check and would otherwise ask them to
+ * log in again.
+ */
+async function ensureProfile(
+  maxUserId: number,
+  session: StoredWorkerSession,
+): Promise<StoredWorkerSession | null> {
+  if (session.ads_user_id && session.role) return session;
+
+  const profile = await getProfile(session.token);
+  if (!profile) return null;
+
+  const db = getWorkerDatabase();
+  db.saveProfile(maxUserId, profile.id, profile.role, profile.name);
+
+  if (isUser(profile.role)) {
+    subscribeUserChannel(profile.id);
+  }
+
+  return db.getSession(maxUserId);
+}
+
+/**
+ * Guards any /requests entry point or req:* action: not logged in, role isn't
+ * a field worker, or session expired all short-circuit here.
+ */
+export async function requireFieldWorker(ctx: BotContext): Promise<WorkerSession | null> {
+  const maxUserId = ctx.user?.user_id;
+  if (!maxUserId) {
+    await ctx.reply('🔐 Сначала авторизуйтесь: /start');
+    return null;
+  }
+
+  const db = getWorkerDatabase();
+  let session = db.getSession(maxUserId);
+  if (!session || new Date(session.expires_at).getTime() <= Date.now()) {
+    await ctx.reply('🔐 Сессия истекла, авторизуйтесь заново: /start');
+    return null;
+  }
+
+  session = await ensureProfile(maxUserId, session);
+  if (!session?.ads_user_id || !session.role) {
+    await ctx.reply('🔐 Не удалось получить профиль. Авторизуйтесь заново: /start');
+    return null;
+  }
+
+  if (!isUser(session.role)) {
+    await ctx.reply(NOT_A_FIELD_WORKER_MESSAGE);
+    return null;
+  }
+
+  return { token: session.token, adsUserId: session.ads_user_id };
+}
+
+function bucketByTab(requests: RequestRecord[], tab: Tab): RequestRecord[] {
+  return requests.filter((r) => userStatusMap[tab].includes(r.status));
+}
+
+function formatRequestLine(request: RequestRecord, index: number): string {
+  const person = request.customer || request.applicant || '—';
+  return `${index + 1}. #${request.id} — ${getFullHouseAddress(request)}\n👤 ${person} · ${request.priority} · ${request.created_at}`;
+}
+
+export function renderListMessage(
+  tab: Tab,
+  allRequests: RequestRecord[],
+): { text: string; keyboard: ReturnType<typeof buildListKeyboard> } {
+  const counts: Record<Tab, number> = {
+    new: bucketByTab(allRequests, 'new').length,
+    accepted: bucketByTab(allRequests, 'accepted').length,
+    completed: bucketByTab(allRequests, 'completed').length,
+  };
+
+  const tabRequests = bucketByTab(allRequests, tab);
+
+  const lines = [`📋 Заявки — ${tabLabels[tab]} (${tabRequests.length})`, ''];
+  if (tabRequests.length === 0) {
+    lines.push('Нет заявок в этой вкладке.');
+  } else {
+    tabRequests.forEach((request, index) => lines.push(formatRequestLine(request, index), ''));
+  }
+
+  return {
+    text: lines.join('\n').trimEnd(),
+    keyboard: buildListKeyboard(tab, tabRequests, counts),
+  };
+}
+
+async function fetchAndRender(ctx: BotContext, session: WorkerSession, tab: Tab) {
+  const requests = await getCachedUserRequests(session.token, session.adsUserId);
+  if (!requests) {
+    return { text: '❌ Не удалось загрузить заявки. Попробуйте позже.', keyboard: undefined };
+  }
+  return renderListMessage(tab, requests);
+}
+
+export async function handleRequestsList(ctx: BotContext) {
+  const session = await requireFieldWorker(ctx);
+  if (!session) return;
+
+  const tab: Tab = 'new';
+  ctx.session = { ...ctx.session, requestsTab: tab };
+
+  const { text, keyboard } = await fetchAndRender(ctx, session, tab);
+  await ctx.reply(text, keyboard ? { attachments: [keyboard] } : undefined);
+}
+
+export async function handleTabAction(ctx: BotContext, tab: Tab) {
+  const session = await requireFieldWorker(ctx);
+  if (!session) return;
+
+  ctx.session = { ...ctx.session, requestsTab: tab };
+
+  const { text, keyboard } = await fetchAndRender(ctx, session, tab);
+  await ctx.editMessage({ text, attachments: keyboard ? [keyboard] : null });
+  await ackCallback(ctx);
+}
