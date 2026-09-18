@@ -16,6 +16,7 @@ import {
   handleWorkDoneSkip,
 } from './requests/detail.js';
 import { bootstrapRealtimeSubscriptions } from './lib/realtime.js';
+import { handleAcceptApplication } from './requests/dispatcher.js';
 
 bot.on('bot_started', handleStart);
 bot.command('start', handleStart);
@@ -44,6 +45,7 @@ bot.action(/^rdo:(\d+):(\d+)$/, (ctx) =>
   handleDeleteFileConfirm(ctx, Number(ctx.match![1]), Number(ctx.match![2])),
 );
 bot.action(/^rb:(\d+)$/, (ctx) => handleBackToDetail(ctx, Number(ctx.match![1])));
+bot.action(/^ac:(\d+)$/, (ctx) => handleAcceptApplication(ctx, Number(ctx.match![1])));
 
 bot.api.setMyCommands([
   { name: 'start', description: 'Авторизация' },

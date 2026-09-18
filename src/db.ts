@@ -97,10 +97,11 @@ class WorkerDatabase {
   }
 
   /**
-   * All non-expired sessions belonging to field-worker roles, used to
-   * re-subscribe Pusher channels after a process restart
+   * All non-expired sessions belonging to the given roles, used to
+   * re-subscribe Pusher channels after a process restart and to fan out
+   * notifications to dispatchers
    */
-  getActiveFieldWorkerSessions(roles: string[]): WorkerSession[] {
+  getActiveSessionsByRoles(roles: string[]): WorkerSession[] {
     const placeholders = roles.map(() => '?').join(', ');
     const stmt = this.db.prepare(`
       SELECT * FROM worker_sessions
@@ -108,6 +109,23 @@ class WorkerDatabase {
     `);
 
     return stmt.all(new Date().toISOString(), ...roles) as WorkerSession[];
+  }
+
+  /**
+   * Most recently active non-expired session's token among the given roles,
+   * used to authenticate the private Pusher channel handshake
+   */
+  getAnyActiveSessionToken(roles: string[]): string | null {
+    const placeholders = roles.map(() => '?').join(', ');
+    const stmt = this.db.prepare(`
+      SELECT token FROM worker_sessions
+      WHERE expires_at > ? AND lower(role) IN (${placeholders})
+      ORDER BY updated_at DESC
+      LIMIT 1
+    `);
+
+    const row = stmt.get(new Date().toISOString(), ...roles) as { token: string } | undefined;
+    return row?.token ?? null;
   }
 
   /**
