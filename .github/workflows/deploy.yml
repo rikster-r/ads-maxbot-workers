@@ -18,11 +18,13 @@ jobs:
           username: ${{ secrets.VPS_USERNAME }}
           password: ${{ secrets.VPS_PASSWORD }}
           envs: GH_PAT
+          script_stop: true
           script: |
+            set -e
             export NVM_DIR="$HOME/.nvm"
             [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
             cd ~/ads-maxbot-workers
-            git pull https://rikster-r:$GH_PAT@github.com/rikster-r/ads-maxbot-workers.git main
+            git pull https://rikster-r:$GH_PAT@github.com/rikster-r/ads-maxbot-workers.git master
             npm ci
             npm run build
             pm2 restart ads-maxbot-workers
