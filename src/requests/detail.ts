@@ -396,6 +396,9 @@ export async function handleDeleteFileConfirm(
 
 async function downloadAttachment(url: string): Promise<Buffer> {
   const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Failed to download attachment: ${response.status} ${url}`);
+  }
   const arrayBuffer = await response.arrayBuffer();
   return Buffer.from(arrayBuffer);
 }

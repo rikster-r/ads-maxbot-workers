@@ -142,6 +142,12 @@ export async function uploadRequestMedia(
       headers: authHeaders(token),
       body: formData,
     });
+    if (!response.ok) {
+      logger.error(
+        { status: response.status, body: await response.text() },
+        'Error uploading request media',
+      );
+    }
     return response.ok;
   } catch (error) {
     logger.error({ err: error }, 'Error uploading request media');
