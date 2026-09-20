@@ -394,14 +394,27 @@ export async function handleDeleteFileConfirm(
   await ctx.answerOnCallback({ notification: 'Файл удалён' });
 }
 
-async function downloadAttachment(url: string): Promise<Buffer> {
+async function downloadAttachment(url: string): Promise<{ data: Buffer; contentType: string | null }> {
   const response = await fetch(url);
   if (!response.ok) {
     throw new Error(`Failed to download attachment: ${response.status} ${url}`);
   }
   const arrayBuffer = await response.arrayBuffer();
-  return Buffer.from(arrayBuffer);
+  return {
+    data: Buffer.from(arrayBuffer),
+    contentType: response.headers.get('content-type'),
+  };
 }
+
+// Extensions accepted by the remote API's `mimes:` validation rule.
+const MIME_TO_EXT: Record<string, string> = {
+  'image/jpeg': 'jpg',
+  'image/jpg': 'jpg',
+  'image/png': 'png',
+  'video/mp4': 'mp4',
+  'video/avi': 'avi',
+  'video/x-msvideo': 'avi',
+};
 
 interface IncomingMediaAttachment {
   type: 'image' | 'video';
@@ -429,11 +442,32 @@ export async function handleIncomingMedia(ctx: BotContext) {
     const files = await Promise.all(
       mediaAttachments.map(async (attachment, index) => {
         const isImage = attachment.type === 'image';
-        const data = await downloadAttachment(attachment.payload.url);
+        const { data, contentType } = await downloadAttachment(attachment.payload.url);
+
+        logger.info(
+          {
+            url: attachment.payload.url,
+            declaredContentType: contentType,
+            byteLength: data.length,
+            magicBytes: data.subarray(0, 16).toString('hex'),
+          },
+          'Downloaded media attachment',
+        );
+
+        // Prefer the CDN's declared type when it maps to an extension the
+        // remote API accepts; otherwise fall back to the attachment's own type.
+        const ext = (contentType && MIME_TO_EXT[contentType]) || (isImage ? 'jpg' : 'mp4');
+        const mimeType =
+          contentType && MIME_TO_EXT[contentType]
+            ? contentType
+            : isImage
+              ? 'image/jpeg'
+              : 'video/mp4';
+
         return {
           data,
-          filename: `${attachment.type}-${Date.now()}-${index}.${isImage ? 'jpg' : 'mp4'}`,
-          mimeType: isImage ? 'image/jpeg' : 'video/mp4',
+          filename: `${attachment.type}-${Date.now()}-${index}.${ext}`,
+          mimeType,
         };
       }),
     );
