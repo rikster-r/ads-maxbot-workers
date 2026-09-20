@@ -1,3 +1,4 @@
+import sharp from 'sharp';
 import { ackCallback, BotContext, BotState } from '../bot.js';
 import { logger } from '../logger.js';
 import {
@@ -407,10 +408,12 @@ async function downloadAttachment(url: string): Promise<{ data: Buffer; contentT
 }
 
 // Extensions accepted by the remote API's `mimes:` validation rule.
-const MIME_TO_EXT: Record<string, string> = {
+const IMAGE_MIME_TO_EXT: Record<string, string> = {
   'image/jpeg': 'jpg',
   'image/jpg': 'jpg',
   'image/png': 'png',
+};
+const VIDEO_MIME_TO_EXT: Record<string, string> = {
   'video/mp4': 'mp4',
   'video/avi': 'avi',
   'video/x-msvideo': 'avi',
@@ -441,28 +444,28 @@ export async function handleIncomingMedia(ctx: BotContext) {
   try {
     const files = await Promise.all(
       mediaAttachments.map(async (attachment, index) => {
-        const isImage = attachment.type === 'image';
-        const { data, contentType } = await downloadAttachment(attachment.payload.url);
+        let { data, contentType } = await downloadAttachment(attachment.payload.url);
 
-        logger.info(
-          {
-            url: attachment.payload.url,
-            declaredContentType: contentType,
-            byteLength: data.length,
-            magicBytes: data.subarray(0, 16).toString('hex'),
-          },
-          'Downloaded media attachment',
-        );
+        let mimeType: string;
+        let ext: string;
 
-        // Prefer the CDN's declared type when it maps to an extension the
-        // remote API accepts; otherwise fall back to the attachment's own type.
-        const ext = (contentType && MIME_TO_EXT[contentType]) || (isImage ? 'jpg' : 'mp4');
-        const mimeType =
-          contentType && MIME_TO_EXT[contentType]
-            ? contentType
-            : isImage
-              ? 'image/jpeg'
-              : 'video/mp4';
+        if (attachment.type === 'image') {
+          if (!contentType || !IMAGE_MIME_TO_EXT[contentType]) {
+            // MAX's CDN re-encodes photos as WebP, which the remote API
+            // doesn't accept — transcode to JPEG so the upload matches its
+            // `mimes:` rule.
+            data = await sharp(data).jpeg().toBuffer();
+            contentType = 'image/jpeg';
+          }
+          mimeType = contentType;
+          ext = IMAGE_MIME_TO_EXT[mimeType];
+        } else {
+          mimeType = 'video/mp4';
+          if (contentType && VIDEO_MIME_TO_EXT[contentType]) {
+            mimeType = contentType;
+          }
+          ext = VIDEO_MIME_TO_EXT[mimeType];
+        }
 
         return {
           data,
