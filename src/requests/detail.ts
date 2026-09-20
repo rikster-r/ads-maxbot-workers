@@ -40,7 +40,7 @@ function problemText(request: RequestRecord): string | null {
   return typeof request.problem === 'string' ? request.problem : request.problem.name;
 }
 
-function formatDetailText(request: RequestRecord, blockedByActiveRequest: boolean): string {
+function formatDetailText(request: RequestRecord, blockingRequest: RequestRecord | null): string {
   const lines: string[] = [`📄 Заявка #${request.id}`, `Статус: ${request.status}`, ''];
 
   if (request.applicant) {
@@ -65,31 +65,32 @@ function formatDetailText(request: RequestRecord, blockedByActiveRequest: boolea
   lines.push('', `Выполненные работы: ${request.work_done || '—'}`);
   lines.push(`Файлы: ${request.files.length}`);
 
-  if (blockedByActiveRequest) {
+  if (blockingRequest) {
     lines.push(
       '',
-      '⚠️ У вас уже есть заявка на исполнении. Завершите её прежде чем менять статус этой заявки.',
+      `⚠️ У вас уже есть заявка №${blockingRequest.id} на исполнении (${getFullHouseAddress(blockingRequest)}). Завершите её, прежде чем менять статус этой заявки.`,
     );
   }
 
   return lines.join('\n');
 }
 
-async function computeBlockedByActiveRequest(
+async function findBlockingActiveRequest(
   session: WorkerSession,
   request: RequestRecord,
-): Promise<boolean> {
+): Promise<RequestRecord | null> {
   // Only relevant while the request is still actionable — a finished/cancelled/
   // closed request, or one not yet accepted, can't be blocked by anything.
   if (!inWorkStatuses.includes(request.status) || request.status === 'Отправлено исполнителю') {
-    return false;
+    return null;
   }
 
   const allRequests = await getUserRequests(session.token, session.adsUserId);
-  if (!allRequests) return false;
+  if (!allRequests) return null;
 
-  return allRequests.some(
-    (r) => r.id !== request.id && activeExecutionStatuses.includes(r.status),
+  return (
+    allRequests.find((r) => r.id !== request.id && activeExecutionStatuses.includes(r.status)) ??
+    null
   );
 }
 
@@ -97,12 +98,12 @@ async function renderDetail(
   session: WorkerSession,
   request: RequestRecord,
 ): Promise<{ text: string; keyboard: ReturnType<typeof buildDetailKeyboard> }> {
-  const blocked = await computeBlockedByActiveRequest(session, request);
+  const blockingRequest = await findBlockingActiveRequest(session, request);
   const config = statusConfig[request.status];
-  const showActionButton = inWorkStatuses.includes(request.status) && !blocked;
+  const showActionButton = inWorkStatuses.includes(request.status) && !blockingRequest;
 
   return {
-    text: formatDetailText(request, blocked),
+    text: formatDetailText(request, blockingRequest),
     keyboard: buildDetailKeyboard({
       request,
       tab: tabForStatus(request.status),
@@ -196,11 +197,10 @@ export async function handleStatusAction(ctx: BotContext, requestId: number) {
     return;
   }
 
-  const blocked = await computeBlockedByActiveRequest(session, request);
-  if (blocked) {
+  const blockingRequest = await findBlockingActiveRequest(session, request);
+  if (blockingRequest) {
     await ctx.answerOnCallback({
-      notification:
-        'У вас уже есть заявка на исполнении. Завершите её прежде чем менять статус другой заявки.',
+      notification: `У вас уже есть заявка №${blockingRequest.id} на исполнении. Завершите её, прежде чем менять статус другой заявки.`,
     });
     return;
   }
