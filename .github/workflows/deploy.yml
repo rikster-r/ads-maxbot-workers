@@ -22,7 +22,7 @@ jobs:
             export NVM_DIR="$HOME/.nvm"
             [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
             cd ~/ads-maxbot-workers
-            git pull https://rikster-r:$GH_PAT@github.com/esDesperado/TODO_REPO_NAME.git main
+            git pull https://rikster-r:$GH_PAT@github.com/rikster-r/ads-maxbot-workers.git main
             npm ci
             npm run build
             pm2 restart ads-maxbot-workers
