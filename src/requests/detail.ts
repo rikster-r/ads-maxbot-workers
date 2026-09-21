@@ -1,5 +1,9 @@
 import sharp from 'sharp';
-import { ackCallback, BotContext, BotState } from '../bot.js';
+import { randomUUID } from 'node:crypto';
+import { rm, writeFile } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { ackCallback, bot, BotContext, BotState } from '../bot.js';
 import { logger } from '../logger.js';
 import {
   activeExecutionStatuses,
@@ -11,9 +15,12 @@ import {
   addComment,
   changeRequestStatus,
   deleteRequestFile,
+  downloadRequestFile,
+  getFileKind,
   getRequestDetail,
   getUserRequests,
   uploadRequestMedia,
+  type RequestFile,
   type RequestRecord,
 } from '../lib/requestsApi.js';
 import { invalidate } from './cache.js';
@@ -21,8 +28,9 @@ import { getFullHouseAddress } from '../lib/houses.js';
 import {
   buildCancelKeyboard,
   buildConfirmKeyboard,
-  buildDeleteFilesKeyboard,
+  buildDeleteSelectedConfirmKeyboard,
   buildDetailKeyboard,
+  buildFileSelectionKeyboard,
   buildMediaCollectionKeyboard,
   buildWorkDoneStepKeyboard,
 } from './keyboards.js';
@@ -341,7 +349,12 @@ export async function handleBackToDetail(ctx: BotContext, requestId: number) {
   const session = await requireFieldWorker(ctx);
   if (!session) return;
 
-  ctx.session = { ...ctx.session, state: BotState.IDLE, completionFlow: false };
+  ctx.session = {
+    ...ctx.session,
+    state: BotState.IDLE,
+    completionFlow: false,
+    selectedFileIds: [],
+  };
 
   const request = await getRequestDetail(session.token, requestId);
   if (!request) {
@@ -354,45 +367,172 @@ export async function handleBackToDetail(ctx: BotContext, requestId: number) {
   await ackCallback(ctx);
 }
 
+const FILE_KIND_LABEL: Record<'image' | 'video' | 'other', { icon: string; label: string }> = {
+  image: { icon: '📷', label: 'Фото' },
+  video: { icon: '🎥', label: 'Видео' },
+  other: { icon: '📄', label: 'Файл' },
+};
+
+function buildFileListCaption(requestId: number, files: RequestFile[]): string {
+  const lines = files.map((file, index) => {
+    const { icon, label } = FILE_KIND_LABEL[getFileKind(file)];
+    return `${index + 1}. ${icon} ${label}`;
+  });
+  return [`📁 Файлы заявки #${requestId}:`, ...lines].join('\n');
+}
+
+// The SDK's upload helper picks a different code path per source type, and
+// each media kind is only reliable on one of them (opposite of each other):
+//  - image: a file-path source falls back to a hand-rolled multipart body
+//    that isn't a real Blob, so MAX silently receives no file at all — a
+//    raw Buffer instead goes through the SDK's Blob-based multipart path,
+//    which works.
+//  - video: a raw Buffer forces a single-shot multipart upload whose
+//    response MAX's video CDN answers with a legacy `<retval>1</retval>`
+//    plaintext body — but the SDK always does res.json() on it, so it
+//    throws. A file-path source instead routes through the chunked
+//    (Content-Range) path, which reads the response as plain text.
+async function uploadBufferToMax(kind: 'image' | 'video', data: Buffer) {
+  if (kind === 'image') {
+    return bot.api.uploadImage({ source: data });
+  }
+
+  const tempPath = path.join(os.tmpdir(), `max-video-${randomUUID()}.mp4`);
+  await writeFile(tempPath, data);
+  try {
+    return await bot.api.uploadVideo({ source: tempPath });
+  } finally {
+    await rm(tempPath, { force: true });
+  }
+}
+
+async function buildFilePreviewAttachments(token: string, files: RequestFile[]) {
+  const attachments = await Promise.all(
+    files.map(async (file) => {
+      const kind = getFileKind(file);
+      if (kind !== 'image' && kind !== 'video') return null;
+
+      try {
+        // file.url is this app's own protected endpoint, not MAX's CDN —
+        // MAX can't fetch it on its own, so the bytes have to come through us.
+        const data = await downloadRequestFile(token, file.url);
+        const attachment = await uploadBufferToMax(kind, data);
+        return attachment.toJson();
+      } catch (error) {
+        logger.error({ err: error, fileId: file.id }, 'Failed to build file preview attachment');
+        return null;
+      }
+    }),
+  );
+  return attachments.filter((attachment): attachment is NonNullable<typeof attachment> => attachment !== null);
+}
+
 export async function handleDeleteFilesEntry(ctx: BotContext, requestId: number) {
   const session = await requireFieldWorker(ctx);
   if (!session) return;
 
   const request = await getRequestDetail(session.token, requestId);
   if (!request || request.files.length === 0) {
-    await ctx.answerOnCallback({ notification: 'Нет файлов для удаления' });
+    await ctx.answerOnCallback({ notification: 'Нет файлов для отображения' });
     return;
   }
 
+  ctx.session = { ...ctx.session, activeRequestId: requestId, selectedFileIds: [] };
+  await ackCallback(ctx);
+
+  const mediaAttachments = await buildFilePreviewAttachments(session.token, request.files);
+  await ctx.reply(buildFileListCaption(requestId, request.files), {
+    attachments: mediaAttachments,
+  });
+
+  await ctx.reply('Нажмите на файл, чтобы выбрать его для удаления:', {
+    attachments: [buildFileSelectionKeyboard(requestId, request.files, [])],
+  });
+}
+
+export async function handleFileToggle(ctx: BotContext, requestId: number, fileId: number) {
+  const session = await requireFieldWorker(ctx);
+  if (!session) return;
+
+  const request = await getRequestDetail(session.token, requestId);
+  if (!request) {
+    await ctx.answerOnCallback({ notification: 'Не удалось загрузить заявку' });
+    return;
+  }
+
+  const current = ctx.session.selectedFileIds ?? [];
+  const selectedFileIds = current.includes(fileId)
+    ? current.filter((id) => id !== fileId)
+    : [...current, fileId];
+  ctx.session = { ...ctx.session, selectedFileIds };
+
   await ctx.editMessage({
-    text: 'Выберите файл для удаления:',
-    attachments: [buildDeleteFilesKeyboard(requestId, request.files)],
+    text: 'Нажмите на файл, чтобы выбрать его для удаления:',
+    attachments: [buildFileSelectionKeyboard(requestId, request.files, selectedFileIds)],
   });
   await ackCallback(ctx);
 }
 
-export async function handleDeleteFileConfirm(
-  ctx: BotContext,
-  requestId: number,
-  fileId: number,
-) {
+export async function handleDeleteSelectedAsk(ctx: BotContext, requestId: number) {
   const session = await requireFieldWorker(ctx);
   if (!session) return;
 
-  const ok = await deleteRequestFile(session.token, fileId);
-  invalidate(session.adsUserId);
-
-  if (!ok) {
-    await ctx.answerOnCallback({ notification: 'Не удалось удалить файл' });
+  const selectedFileIds = ctx.session.selectedFileIds ?? [];
+  if (selectedFileIds.length === 0) {
+    await ctx.answerOnCallback({ notification: 'Ничего не выбрано' });
     return;
   }
+
+  await ctx.editMessage({
+    text: `Удалить ${selectedFileIds.length} файл(ов)? Это действие необратимо.`,
+    attachments: [buildDeleteSelectedConfirmKeyboard(requestId)],
+  });
+  await ackCallback(ctx);
+}
+
+export async function handleDeleteSelectedBack(ctx: BotContext, requestId: number) {
+  const session = await requireFieldWorker(ctx);
+  if (!session) return;
+
+  const request = await getRequestDetail(session.token, requestId);
+  if (!request) {
+    await ctx.answerOnCallback({ notification: 'Не удалось загрузить заявку' });
+    return;
+  }
+
+  const selectedFileIds = ctx.session.selectedFileIds ?? [];
+  await ctx.editMessage({
+    text: 'Нажмите на файл, чтобы выбрать его для удаления:',
+    attachments: [buildFileSelectionKeyboard(requestId, request.files, selectedFileIds)],
+  });
+  await ackCallback(ctx);
+}
+
+export async function handleDeleteSelectedConfirm(ctx: BotContext, requestId: number) {
+  const session = await requireFieldWorker(ctx);
+  if (!session) return;
+
+  const selectedFileIds = ctx.session.selectedFileIds ?? [];
+  const results = await Promise.allSettled(
+    selectedFileIds.map((fileId) => deleteRequestFile(session.token, fileId)),
+  );
+  const succeeded = results.filter((result) => result.status === 'fulfilled' && result.value).length;
+  const failed = selectedFileIds.length - succeeded;
+
+  invalidate(session.adsUserId);
+  ctx.session = { ...ctx.session, selectedFileIds: [] };
 
   const request = await getRequestDetail(session.token, requestId);
   if (request) {
     const { text, keyboard } = await renderDetail(session, request);
     await ctx.editMessage({ text, attachments: [keyboard] });
   }
-  await ctx.answerOnCallback({ notification: 'Файл удалён' });
+
+  const notification =
+    failed > 0
+      ? `Удалено файлов: ${succeeded}. Не удалось удалить: ${failed}.`
+      : `Удалено файлов: ${succeeded}`;
+  await ctx.answerOnCallback({ notification });
 }
 
 async function downloadAttachment(url: string): Promise<{ data: Buffer; contentType: string | null }> {

@@ -6,8 +6,11 @@ import {
   handleAddMediaButton,
   handleBackToDetail,
   handleCommentButton,
-  handleDeleteFileConfirm,
   handleDeleteFilesEntry,
+  handleDeleteSelectedAsk,
+  handleDeleteSelectedBack,
+  handleDeleteSelectedConfirm,
+  handleFileToggle,
   handleMediaDone,
   handleOpenRequest,
   handleStatusAction,
@@ -41,9 +44,12 @@ bot.action(/^rmd:(\d+)$/, (ctx) => handleMediaDone(ctx, Number(ctx.match![1])));
 bot.action(/^rc:(\d+)$/, (ctx) => handleCommentButton(ctx, Number(ctx.match![1])));
 bot.action(/^rws:(\d+)$/, (ctx) => handleWorkDoneSkip(ctx, Number(ctx.match![1])));
 bot.action(/^rdf:(\d+)$/, (ctx) => handleDeleteFilesEntry(ctx, Number(ctx.match![1])));
-bot.action(/^rdo:(\d+):(\d+)$/, (ctx) =>
-  handleDeleteFileConfirm(ctx, Number(ctx.match![1]), Number(ctx.match![2])),
+bot.action(/^rdt:(\d+):(\d+)$/, (ctx) =>
+  handleFileToggle(ctx, Number(ctx.match![1]), Number(ctx.match![2])),
 );
+bot.action(/^rda:(\d+)$/, (ctx) => handleDeleteSelectedAsk(ctx, Number(ctx.match![1])));
+bot.action(/^rdy:(\d+)$/, (ctx) => handleDeleteSelectedConfirm(ctx, Number(ctx.match![1])));
+bot.action(/^rdb:(\d+)$/, (ctx) => handleDeleteSelectedBack(ctx, Number(ctx.match![1])));
 bot.action(/^rb:(\d+)$/, (ctx) => handleBackToDetail(ctx, Number(ctx.match![1])));
 bot.action(/^ac:(\d+)$/, (ctx) => handleAcceptApplication(ctx, Number(ctx.match![1])));
 

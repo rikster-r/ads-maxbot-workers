@@ -7,6 +7,22 @@ export interface RequestFile {
   url: string;
 }
 
+const IMAGE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png']);
+const VIDEO_EXTENSIONS = new Set(['mp4', 'avi']);
+
+// `format` is a MIME type (e.g. "image/jpeg", "video/mp4"), not a bare
+// extension — `name` (e.g. "image-<timestamp>-0") never carries one either.
+export function getFileKind(file: RequestFile): 'image' | 'video' | 'other' {
+  const format = file.format?.toLowerCase() ?? '';
+  if (format.startsWith('image/')) return 'image';
+  if (format.startsWith('video/')) return 'video';
+
+  const nameExt = file.name.split('.').pop()?.toLowerCase();
+  if (nameExt && IMAGE_EXTENSIONS.has(nameExt)) return 'image';
+  if (nameExt && VIDEO_EXTENSIONS.has(nameExt)) return 'video';
+  return 'other';
+}
+
 export interface RequestRecord {
   id: number;
   created_at: string;
@@ -166,4 +182,15 @@ export async function deleteRequestFile(token: string, fileId: number): Promise<
     logger.error({ err: error }, 'Error deleting request file');
     return false;
   }
+}
+
+// file.url points at this app's own protected download endpoint (requires
+// the same bearer token as every other request here) — not a public/MAX
+// CDN url, so it can't just be handed to MAX to fetch on its own.
+export async function downloadRequestFile(token: string, url: string): Promise<Buffer> {
+  const response = await fetch(url, { headers: authHeaders(token) });
+  if (!response.ok) {
+    throw new Error(`Failed to download file: ${response.status} ${url}`);
+  }
+  return Buffer.from(await response.arrayBuffer());
 }
