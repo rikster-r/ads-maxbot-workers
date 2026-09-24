@@ -11,6 +11,7 @@ import {
   handleDeleteSelectedBack,
   handleDeleteSelectedConfirm,
   handleFileToggle,
+  handleHouseCardButton,
   handleMediaDone,
   handleOpenRequest,
   handleStatusAction,
@@ -40,6 +41,7 @@ bot.action(/^rsc:(\d+):(.+)$/, (ctx) =>
 );
 bot.action(/^rsx:(\d+)$/, (ctx) => handleStatusCancel(ctx, Number(ctx.match![1])));
 bot.action(/^rm:(\d+)$/, (ctx) => handleAddMediaButton(ctx, Number(ctx.match![1])));
+bot.action(/^rh:(\d+)$/, (ctx) => handleHouseCardButton(ctx, Number(ctx.match![1])));
 bot.action(/^rmd:(\d+)$/, (ctx) => handleMediaDone(ctx, Number(ctx.match![1])));
 bot.action(/^rc:(\d+)$/, (ctx) => handleCommentButton(ctx, Number(ctx.match![1])));
 bot.action(/^rws:(\d+)$/, (ctx) => handleWorkDoneSkip(ctx, Number(ctx.match![1])));

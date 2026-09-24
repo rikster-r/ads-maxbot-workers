@@ -8,6 +8,7 @@ type Tab = 'new' | 'accepted' | 'completed';
 const { inlineKeyboard, button } = Keyboard;
 
 const MINIMAL_KEYBOARD_STATUSES = new Set(['Отправлено исполнителю', 'В пути']);
+const COMPLETION_KEYBOARD_STATUSES = new Set(['Прибыл', 'На исполнении']);
 
 export function buildListKeyboard(
   activeTab: Tab,
@@ -34,6 +35,23 @@ export function buildDetailKeyboard(options: {
   hasFiles: boolean;
 }) {
   const { request, tab, nextLabel, showActionButton, hasFiles } = options;
+
+  // The "arrived" ("Прибыл") and "on site" ("На исполнении") cards lead up
+  // to completing the request — fixed order, house card button not wired
+  // up yet.
+  if (COMPLETION_KEYBOARD_STATUSES.has(request.status)) {
+    const rows: ReturnType<typeof button.callback>[][] = [
+      [button.callback('Карточка дома', `rh:${request.id}`)],
+      [button.callback('Выполненная работа', `rc:${request.id}`)],
+      [button.callback('Добавить фото и видео', `rm:${request.id}`)],
+    ];
+    if (showActionButton && nextLabel) {
+      rows.push([button.callback(nextLabel, `rs:${request.id}`)]);
+    }
+    rows.push([button.callback('К списку заявок', `rl:${tab}`)]);
+    return inlineKeyboard(rows);
+  }
+
   const rows: ReturnType<typeof button.callback>[][] = [];
 
   if (showActionButton && nextLabel) {

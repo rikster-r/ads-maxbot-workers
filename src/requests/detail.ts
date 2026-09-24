@@ -283,6 +283,11 @@ export async function handleStatusCancel(ctx: BotContext, requestId: number) {
   await ackCallback(ctx);
 }
 
+// TODO: not implemented yet — button is shown per spec but has no behavior.
+export async function handleHouseCardButton(ctx: BotContext, _requestId: number) {
+  await ctx.answerOnCallback({ notification: 'Скоро будет доступно' });
+}
+
 export async function handleAddMediaButton(ctx: BotContext, requestId: number) {
   const session = await requireFieldWorker(ctx);
   if (!session) return;
