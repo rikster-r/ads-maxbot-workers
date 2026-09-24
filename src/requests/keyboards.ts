@@ -38,11 +38,15 @@ export function buildDetailKeyboard(options: {
     rows.push([button.callback(nextLabel, `rs:${request.id}`)]);
   }
 
-  rows.push([button.callback('📷 Добавить фото/видео', `rm:${request.id}`)]);
-  rows.push([button.callback('📝 Изменить описание работ', `rc:${request.id}`)]);
+  // The "new" tab card is the accept-request screen — keep it to just the
+  // action and a way back, without the in-progress editing buttons.
+  if (tab !== 'new') {
+    rows.push([button.callback('📷 Добавить фото/видео', `rm:${request.id}`)]);
+    rows.push([button.callback('📝 Изменить описание работ', `rc:${request.id}`)]);
 
-  if (hasFiles) {
-    rows.push([button.callback('📁 Файлы', `rdf:${request.id}`)]);
+    if (hasFiles) {
+      rows.push([button.callback('📁 Файлы', `rdf:${request.id}`)]);
+    }
   }
 
   rows.push([button.callback('⬅️ К списку', `rl:${tab}`)]);
