@@ -11,7 +11,6 @@ import {
   handleDeleteSelectedBack,
   handleDeleteSelectedConfirm,
   handleFileToggle,
-  handleHouseCardButton,
   handleMediaDone,
   handleOpenRequest,
   handleStatusAction,
@@ -19,6 +18,11 @@ import {
   handleStatusConfirm,
   handleWorkDoneSkip,
 } from './requests/detail.js';
+import {
+  handleHouseCardBack,
+  handleHouseCardOpen,
+  handleHouseTabSwitch,
+} from './requests/house.js';
 import { bootstrapRealtimeSubscriptions } from './lib/realtime.js';
 import { handleAcceptApplication } from './requests/dispatcher.js';
 
@@ -41,7 +45,16 @@ bot.action(/^rsc:(\d+):(.+)$/, (ctx) =>
 );
 bot.action(/^rsx:(\d+)$/, (ctx) => handleStatusCancel(ctx, Number(ctx.match![1])));
 bot.action(/^rm:(\d+)$/, (ctx) => handleAddMediaButton(ctx, Number(ctx.match![1])));
-bot.action(/^rh:(\d+)$/, (ctx) => handleHouseCardButton(ctx, Number(ctx.match![1])));
+bot.action(/^rh:(\d+)$/, (ctx) => handleHouseCardOpen(ctx, Number(ctx.match![1])));
+bot.action(/^rht:(\d+):(\d+):(i|e|f)$/, (ctx) =>
+  handleHouseTabSwitch(
+    ctx,
+    Number(ctx.match![1]),
+    Number(ctx.match![2]),
+    ctx.match![3] as 'i' | 'e' | 'f',
+  ),
+);
+bot.action(/^rhb:(\d+)$/, (ctx) => handleHouseCardBack(ctx, Number(ctx.match![1])));
 bot.action(/^rmd:(\d+)$/, (ctx) => handleMediaDone(ctx, Number(ctx.match![1])));
 bot.action(/^rc:(\d+)$/, (ctx) => handleCommentButton(ctx, Number(ctx.match![1])));
 bot.action(/^rws:(\d+)$/, (ctx) => handleWorkDoneSkip(ctx, Number(ctx.match![1])));

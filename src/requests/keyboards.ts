@@ -37,8 +37,7 @@ export function buildDetailKeyboard(options: {
   const { request, tab, nextLabel, showActionButton, hasFiles } = options;
 
   // The "arrived" ("Прибыл") and "on site" ("На исполнении") cards lead up
-  // to completing the request — fixed order, house card button not wired
-  // up yet.
+  // to completing the request — fixed order.
   if (COMPLETION_KEYBOARD_STATUSES.has(request.status)) {
     const rows: ReturnType<typeof button.callback>[][] = [
       [button.callback('Карточка дома', `rh:${request.id}`)],
@@ -146,5 +145,25 @@ export function buildDeleteSelectedConfirmKeyboard(requestId: number) {
       button.callback('Да', `rdy:${requestId}`),
       button.callback('Отмена', `rdb:${requestId}`),
     ],
+  ]);
+}
+
+export type HouseTab = 'i' | 'e' | 'f';
+
+const HOUSE_TAB_LABELS: Record<HouseTab, string> = {
+  i: 'Инфо',
+  e: 'Прочее',
+  f: 'Файлы',
+};
+
+export function buildHouseCardKeyboard(houseId: number, requestId: number, activeTab: HouseTab) {
+  const tabRow = (Object.keys(HOUSE_TAB_LABELS) as HouseTab[]).map((tab) => {
+    const label = `${tab === activeTab ? '• ' : ''}${HOUSE_TAB_LABELS[tab]}`;
+    return button.callback(label, `rht:${houseId}:${requestId}:${tab}`);
+  });
+
+  return inlineKeyboard([
+    tabRow,
+    [button.callback('⬅️ Назад к заявке', `rhb:${requestId}`)],
   ]);
 }

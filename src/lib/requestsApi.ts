@@ -1,4 +1,5 @@
 import { logger } from '../logger.js';
+import type { HouseSummary } from './housesApi.js';
 
 export interface RequestFile {
   id: number;
@@ -38,7 +39,7 @@ export interface RequestRecord {
   priority: string;
   users: string[];
   status: string;
-  house: { city?: string; full_address?: string; commercial?: boolean } | string | null;
+  house: HouseSummary | string | null;
   organization: string | null;
   entrance: number | null;
   floor: number | null;

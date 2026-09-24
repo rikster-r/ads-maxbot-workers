@@ -1,9 +1,5 @@
 import sharp from 'sharp';
-import { randomUUID } from 'node:crypto';
-import { rm, writeFile } from 'node:fs/promises';
-import os from 'node:os';
-import path from 'node:path';
-import { ackCallback, bot, BotContext, BotState } from '../bot.js';
+import { ackCallback, BotContext, BotState } from '../bot.js';
 import { logger } from '../logger.js';
 import {
   activeExecutionStatuses,
@@ -25,6 +21,7 @@ import {
 } from '../lib/requestsApi.js';
 import { invalidate } from './cache.js';
 import { getFullHouseAddress } from '../lib/houses.js';
+import { uploadBufferToMax } from '../lib/maxUpload.js';
 import {
   buildCancelKeyboard,
   buildConfirmKeyboard,
@@ -283,11 +280,6 @@ export async function handleStatusCancel(ctx: BotContext, requestId: number) {
   await ackCallback(ctx);
 }
 
-// TODO: not implemented yet — button is shown per spec but has no behavior.
-export async function handleHouseCardButton(ctx: BotContext, _requestId: number) {
-  await ctx.answerOnCallback({ notification: 'Скоро будет доступно' });
-}
-
 export async function handleAddMediaButton(ctx: BotContext, requestId: number) {
   const session = await requireFieldWorker(ctx);
   if (!session) return;
@@ -396,31 +388,6 @@ function buildFileListCaption(requestId: number, files: RequestFile[]): string {
     return `${index + 1}. ${icon} ${label}`;
   });
   return [`📁 Файлы заявки #${requestId}:`, ...lines].join('\n');
-}
-
-// The SDK's upload helper picks a different code path per source type, and
-// each media kind is only reliable on one of them (opposite of each other):
-//  - image: a file-path source falls back to a hand-rolled multipart body
-//    that isn't a real Blob, so MAX silently receives no file at all — a
-//    raw Buffer instead goes through the SDK's Blob-based multipart path,
-//    which works.
-//  - video: a raw Buffer forces a single-shot multipart upload whose
-//    response MAX's video CDN answers with a legacy `<retval>1</retval>`
-//    plaintext body — but the SDK always does res.json() on it, so it
-//    throws. A file-path source instead routes through the chunked
-//    (Content-Range) path, which reads the response as plain text.
-async function uploadBufferToMax(kind: 'image' | 'video', data: Buffer) {
-  if (kind === 'image') {
-    return bot.api.uploadImage({ source: data });
-  }
-
-  const tempPath = path.join(os.tmpdir(), `max-video-${randomUUID()}.mp4`);
-  await writeFile(tempPath, data);
-  try {
-    return await bot.api.uploadVideo({ source: tempPath });
-  } finally {
-    await rm(tempPath, { force: true });
-  }
 }
 
 async function buildFilePreviewAttachments(token: string, files: RequestFile[]) {
