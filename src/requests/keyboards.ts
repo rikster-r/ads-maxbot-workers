@@ -77,24 +77,14 @@ export function buildDetailKeyboard(options: {
 export function buildConfirmKeyboard(requestId: number, sentAPIStatus: string) {
   return inlineKeyboard([
     [
-      button.callback('Да', `rsc:${requestId}:${sentAPIStatus}`),
-      button.callback('Отмена', `rsx:${requestId}`),
+      button.callback('Выполнена', `rsc:${requestId}:${sentAPIStatus}`),
+      button.callback('Внести изменения', `rsx:${requestId}`),
     ],
   ]);
 }
 
 export function buildMediaCollectionKeyboard(requestId: number) {
   return inlineKeyboard([[button.callback('✅ Готово', `rmd:${requestId}`)]]);
-}
-
-export function buildWorkDoneStepKeyboard(requestId: number) {
-  return inlineKeyboard([
-    [
-      button.callback('Написать', `rc:${requestId}`),
-      button.callback('Пропустить', `rws:${requestId}`),
-    ],
-    [button.callback('⬅️ Отмена', `rb:${requestId}`)],
-  ]);
 }
 
 export function buildCancelKeyboard(requestId: number) {

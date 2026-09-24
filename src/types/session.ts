@@ -5,6 +5,5 @@ export interface SessionData {
   login: string | null;
   activeRequestId?: number | null;
   requestsTab?: 'new' | 'accepted' | 'completed';
-  completionFlow?: boolean;
   selectedFileIds?: number[];
 }

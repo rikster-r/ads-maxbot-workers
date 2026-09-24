@@ -29,9 +29,8 @@ import {
   buildDetailKeyboard,
   buildFileSelectionKeyboard,
   buildMediaCollectionKeyboard,
-  buildWorkDoneStepKeyboard,
 } from './keyboards.js';
-import { requireFieldWorker, type WorkerSession } from './list.js';
+import { handleTabAction, requireFieldWorker, type WorkerSession } from './list.js';
 
 type Tab = 'new' | 'accepted' | 'completed';
 
@@ -147,38 +146,28 @@ async function reRenderDetailAsReply(ctx: BotContext, session: WorkerSession, re
   await ctx.reply(text, { attachments: [keyboard] });
 }
 
-async function startCompletionFlow(ctx: BotContext, session: WorkerSession, request: RequestRecord) {
-  ctx.session = {
-    ...ctx.session,
-    activeRequestId: request.id,
-    completionFlow: true,
-  };
+async function showCompletionConfirm(ctx: BotContext, request: RequestRecord) {
+  const config = statusConfig[request.status];
+  const sentAPIStatus = config?.sentAPIStatus;
+  if (!sentAPIStatus) return;
 
-  if (request.files.length === 0) {
-    ctx.session = { ...ctx.session, state: BotState.WAITING_MEDIA };
-    await ctx.editMessage({
-      text: '📷 Прикрепите фото или видео, чтобы завершить заявку. Это обязательно.',
-      attachments: [buildCancelKeyboard(request.id)],
-    });
-    await ackCallback(ctx);
-    return;
-  }
+  ctx.session = { ...ctx.session, activeRequestId: request.id };
 
-  await promptWorkDoneOrConfirm(ctx, request);
+  await ctx.editMessage({
+    text: '⚠️ Внимание! Убедитесь что вы внесли информацию о проделанной работе, добавили файлы фото или видео фиксации.',
+    attachments: [buildConfirmKeyboard(request.id, sentAPIStatus)],
+  });
+  await ackCallback(ctx);
 }
 
-async function promptWorkDoneOrConfirm(ctx: BotContext, request: RequestRecord) {
-  if (!request.work_done) {
-    ctx.session = { ...ctx.session, state: BotState.IDLE };
-    await ctx.editMessage({
-      text: '📝 Хотите добавить описание выполненных работ?',
-      attachments: [buildWorkDoneStepKeyboard(request.id)],
-    });
-    await ackCallback(ctx);
-    return;
-  }
-
-  await promptFinalConfirm(ctx, request);
+async function changeStatusAndInvalidate(
+  session: WorkerSession,
+  requestId: number,
+  sentAPIStatus: string,
+): Promise<boolean> {
+  const ok = await changeRequestStatus(session.token, requestId, sentAPIStatus);
+  invalidate(session.adsUserId);
+  return ok;
 }
 
 async function performStatusChange(
@@ -187,8 +176,7 @@ async function performStatusChange(
   requestId: number,
   sentAPIStatus: string,
 ): Promise<boolean> {
-  const ok = await changeRequestStatus(session.token, requestId, sentAPIStatus);
-  invalidate(session.adsUserId);
+  const ok = await changeStatusAndInvalidate(session, requestId, sentAPIStatus);
   if (!ok) return false;
 
   const request = await getRequestDetail(session.token, requestId);
@@ -197,18 +185,6 @@ async function performStatusChange(
     await ctx.editMessage({ text, attachments: [keyboard] });
   }
   return true;
-}
-
-async function promptFinalConfirm(ctx: BotContext, request: RequestRecord) {
-  const config = statusConfig[request.status];
-  const sentAPIStatus = config?.sentAPIStatus;
-  if (!sentAPIStatus) return;
-
-  await ctx.editMessage({
-    text: 'Завершить заявку?',
-    attachments: [buildConfirmKeyboard(request.id, sentAPIStatus)],
-  });
-  await ackCallback(ctx);
 }
 
 export async function handleStatusAction(ctx: BotContext, requestId: number) {
@@ -236,7 +212,7 @@ export async function handleStatusAction(ctx: BotContext, requestId: number) {
   }
 
   if (completionStatuses.includes(request.status)) {
-    await startCompletionFlow(ctx, session, request);
+    await showCompletionConfirm(ctx, request);
     return;
   }
 
@@ -256,21 +232,22 @@ export async function handleStatusConfirm(
   const session = await requireFieldWorker(ctx);
   if (!session) return;
 
-  ctx.session = { ...ctx.session, completionFlow: false, state: BotState.IDLE };
+  ctx.session = { ...ctx.session, state: BotState.IDLE };
 
-  const ok = await performStatusChange(ctx, session, requestId, sentAPIStatus);
+  const ok = await changeStatusAndInvalidate(session, requestId, sentAPIStatus);
   if (!ok) {
     await ctx.answerOnCallback({ notification: 'Не удалось изменить статус' });
     return;
   }
-  await ackCallback(ctx);
+  // handleTabAction acks the callback itself — don't ack again here.
+  await handleTabAction(ctx, 'new');
 }
 
 export async function handleStatusCancel(ctx: BotContext, requestId: number) {
   const session = await requireFieldWorker(ctx);
   if (!session) return;
 
-  ctx.session = { ...ctx.session, completionFlow: false, state: BotState.IDLE };
+  ctx.session = { ...ctx.session, state: BotState.IDLE };
 
   const request = await getRequestDetail(session.token, requestId);
   if (request) {
@@ -287,7 +264,6 @@ export async function handleAddMediaButton(ctx: BotContext, requestId: number) {
   ctx.session = {
     ...ctx.session,
     activeRequestId: requestId,
-    completionFlow: false,
     state: BotState.WAITING_MEDIA,
   };
 
@@ -301,17 +277,11 @@ export async function handleMediaDone(ctx: BotContext, requestId: number) {
   const session = await requireFieldWorker(ctx);
   if (!session) return;
 
-  const wasCompletionFlow = ctx.session.completionFlow === true;
   ctx.session = { ...ctx.session, state: BotState.IDLE };
 
   const request = await getRequestDetail(session.token, requestId);
   if (!request) {
     await ctx.answerOnCallback({ notification: 'Не удалось загрузить заявку' });
-    return;
-  }
-
-  if (wasCompletionFlow) {
-    await promptWorkDoneOrConfirm(ctx, request);
     return;
   }
 
@@ -336,23 +306,10 @@ export async function handleCommentButton(ctx: BotContext, requestId: number) {
   });
 }
 
-export async function handleWorkDoneSkip(ctx: BotContext, requestId: number) {
-  const session = await requireFieldWorker(ctx);
-  if (!session) return;
-
-  const request = await getRequestDetail(session.token, requestId);
-  if (!request) {
-    await ctx.answerOnCallback({ notification: 'Не удалось загрузить заявку' });
-    return;
-  }
-
-  await promptFinalConfirm(ctx, request);
-}
-
 /**
  * Universal "⬅️ Отмена" handler for every in-progress prompt (standalone
- * media/comment entry, the completion wizard's photo/work-done steps).
- * Always aborts whatever is in progress and returns to the plain detail view.
+ * media/comment entry). Always aborts whatever is in progress and returns
+ * to the plain detail view.
  */
 export async function handleBackToDetail(ctx: BotContext, requestId: number) {
   const session = await requireFieldWorker(ctx);
@@ -361,7 +318,6 @@ export async function handleBackToDetail(ctx: BotContext, requestId: number) {
   ctx.session = {
     ...ctx.session,
     state: BotState.IDLE,
-    completionFlow: false,
     selectedFileIds: [],
   };
 
@@ -635,25 +591,7 @@ export async function handleIncomingComment(ctx: BotContext, text: string) {
   }
   invalidate(session.adsUserId);
 
-  const wasCompletionFlow = ctx.session.completionFlow === true;
   ctx.session = { ...ctx.session, state: BotState.IDLE };
-
-  const request = await getRequestDetail(session.token, requestId);
-  if (!request) {
-    await ctx.reply('❌ Не удалось загрузить заявку.');
-    return;
-  }
-
-  if (wasCompletionFlow) {
-    const config = statusConfig[request.status];
-    const sentAPIStatus = config?.sentAPIStatus;
-    if (sentAPIStatus) {
-      await ctx.reply('Завершить заявку?', {
-        attachments: [buildConfirmKeyboard(requestId, sentAPIStatus)],
-      });
-    }
-    return;
-  }
 
   await reRenderDetailAsReply(ctx, session, requestId);
 }

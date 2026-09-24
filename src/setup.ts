@@ -16,7 +16,6 @@ import {
   handleStatusAction,
   handleStatusCancel,
   handleStatusConfirm,
-  handleWorkDoneSkip,
 } from './requests/detail.js';
 import {
   handleHouseCardBack,
@@ -57,7 +56,6 @@ bot.action(/^rht:(\d+):(\d+):(i|e|f)$/, (ctx) =>
 bot.action(/^rhb:(\d+)$/, (ctx) => handleHouseCardBack(ctx, Number(ctx.match![1])));
 bot.action(/^rmd:(\d+)$/, (ctx) => handleMediaDone(ctx, Number(ctx.match![1])));
 bot.action(/^rc:(\d+)$/, (ctx) => handleCommentButton(ctx, Number(ctx.match![1])));
-bot.action(/^rws:(\d+)$/, (ctx) => handleWorkDoneSkip(ctx, Number(ctx.match![1])));
 bot.action(/^rdf:(\d+)$/, (ctx) => handleDeleteFilesEntry(ctx, Number(ctx.match![1])));
 bot.action(/^rdt:(\d+):(\d+)$/, (ctx) =>
   handleFileToggle(ctx, Number(ctx.match![1]), Number(ctx.match![2])),
