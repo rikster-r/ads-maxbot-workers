@@ -184,6 +184,24 @@ async function promptWorkDoneOrConfirm(ctx: BotContext, request: RequestRecord) 
   await promptFinalConfirm(ctx, request);
 }
 
+async function performStatusChange(
+  ctx: BotContext,
+  session: WorkerSession,
+  requestId: number,
+  sentAPIStatus: string,
+): Promise<boolean> {
+  const ok = await changeRequestStatus(session.token, requestId, sentAPIStatus);
+  invalidate(session.adsUserId);
+  if (!ok) return false;
+
+  const request = await getRequestDetail(session.token, requestId);
+  if (request) {
+    const { text, keyboard } = await renderDetail(session, request);
+    await ctx.editMessage({ text, attachments: [keyboard] });
+  }
+  return true;
+}
+
 async function promptFinalConfirm(ctx: BotContext, request: RequestRecord) {
   const config = statusConfig[request.status];
   const sentAPIStatus = config?.sentAPIStatus;
@@ -225,11 +243,12 @@ export async function handleStatusAction(ctx: BotContext, requestId: number) {
     return;
   }
 
-  await ctx.editMessage({
-    text: `Вы уверены? Статус изменится на «${config.nextStatus}».`,
-    attachments: [buildConfirmKeyboard(requestId, config.sentAPIStatus)],
-  });
-  await ackCallback(ctx);
+  const ok = await performStatusChange(ctx, session, requestId, config.sentAPIStatus);
+  if (!ok) {
+    await ctx.answerOnCallback({ notification: 'Не удалось изменить статус' });
+    return;
+  }
+  await ctx.answerOnCallback({ notification: 'Статус изменён' });
 }
 
 export async function handleStatusConfirm(
@@ -240,19 +259,12 @@ export async function handleStatusConfirm(
   const session = await requireFieldWorker(ctx);
   if (!session) return;
 
-  const ok = await changeRequestStatus(session.token, requestId, sentAPIStatus);
-  invalidate(session.adsUserId);
   ctx.session = { ...ctx.session, completionFlow: false, state: BotState.IDLE };
 
+  const ok = await performStatusChange(ctx, session, requestId, sentAPIStatus);
   if (!ok) {
     await ctx.answerOnCallback({ notification: 'Не удалось изменить статус' });
     return;
-  }
-
-  const request = await getRequestDetail(session.token, requestId);
-  if (request) {
-    const { text, keyboard } = await renderDetail(session, request);
-    await ctx.editMessage({ text, attachments: [keyboard] });
   }
   await ctx.answerOnCallback({ notification: 'Статус изменён' });
 }
