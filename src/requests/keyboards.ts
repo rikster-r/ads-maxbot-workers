@@ -7,6 +7,8 @@ type Tab = 'new' | 'accepted' | 'completed';
 
 const { inlineKeyboard, button } = Keyboard;
 
+const MINIMAL_KEYBOARD_STATUSES = new Set(['Отправлено исполнителю', 'В пути']);
+
 export function buildListKeyboard(
   activeTab: Tab,
   requests: RequestRecord[],
@@ -38,9 +40,10 @@ export function buildDetailKeyboard(options: {
     rows.push([button.callback(nextLabel, `rs:${request.id}`)]);
   }
 
-  // The "new" tab card is the accept-request screen — keep it to just the
-  // action and a way back, without the in-progress editing buttons.
-  if (tab !== 'new') {
+  // The accept-request ("Отправлено исполнителю") and en-route ("В пути")
+  // cards are single-action screens — keep them to just the action and a
+  // way back, without the in-progress editing buttons.
+  if (!MINIMAL_KEYBOARD_STATUSES.has(request.status)) {
     rows.push([button.callback('📷 Добавить фото/видео', `rm:${request.id}`)]);
     rows.push([button.callback('📝 Изменить описание работ', `rc:${request.id}`)]);
 
