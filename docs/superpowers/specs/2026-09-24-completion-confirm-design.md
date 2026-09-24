@@ -4,7 +4,11 @@
 
 Сейчас клик по кнопке действия («Заявка выполнена») для заявок в статусе
 «Прибыл» / «На исполнении» запускает 3-шаговый визард
-(`startCompletionFlow`, [src/requests/detail.ts:150-212](../../../src/requests/detail.ts#L150-L212)):
+(`startCompletionFlow` … `promptFinalConfirm`,
+[src/requests/detail.ts:150-212](../../../src/requests/detail.ts#L150-L212) —
+этот диапазон включает также `performStatusChange` (184-200), общий
+хелпер, используемый и другими, не-визардными переходами статуса; он
+не удаляется, см. раздел 2):
 
 1. Если у заявки 0 файлов — обязательное требование прикрепить фото/видео
    (`BotState.WAITING_MEDIA`).
@@ -35,10 +39,32 @@
 
 ### 2. «Выполнена» (`rsc:`)
 
-`handleStatusConfirm` меняет статус заявки через API (как сейчас), но
-вместо повторной отрисовки карточки заявки — переходит к списку заявок,
-вкладка **«Новые»**, переиспользуя `handleTabAction(ctx, 'new')`
+`handleStatusConfirm` меняет статус заявки через API и переходит к
+списку заявок, вкладка **«Новые»** (осознанный выбор: это вкладка,
+которую видит исполнитель по умолчанию при входе в список, а не вкладка
+только что завершённой заявки), переиспользуя `handleTabAction(ctx, 'new')`
 из [src/requests/list.ts:103-112](../../../src/requests/list.ts#L103-L112).
+
+`performStatusChange` ([detail.ts:184-200](../../../src/requests/detail.ts#L184-L200))
+переиспользовать напрямую нельзя — она сама вызывает `getRequestDetail`
+и `ctx.editMessage` для перерисовки карточки заявки, а `handleTabAction`
+следом перерисует то же сообщение под список, то есть рендер карточки
+окажется лишней работой. `handleStatusConfirm` вместо этого должен:
+
+1. Вызвать `changeRequestStatus` + `invalidate` напрямую (либо вынести
+   этот кусок из `performStatusChange` в отдельный небольшой хелпер
+   `changeStatusAndInvalidate(session, requestId, sentAPIStatus)`,
+   переиспользуемый обеими функциями) — без последующего
+   `getRequestDetail`/`editMessage` карточки.
+2. При успехе — вызвать `handleTabAction(ctx, 'new')` и **не** вызывать
+   `ackCallback(ctx)` самостоятельно: `handleTabAction` уже делает это
+   внутри себя ([list.ts:111](../../../src/requests/list.ts#L111)), и
+   повторный `ackCallback` на тот же callback — двойной ack, который
+   либо будет отклонён API MAX, либо создаст лишний side effect.
+3. При неудаче API-вызова — как и сейчас, показать уведомление
+   `'Не удалось изменить статус'` через `ctx.answerOnCallback` и
+   оставить текущий экран (уведомление-напоминание) без изменений, без
+   перехода к списку.
 
 Статус меняется независимо от того, добавлены ли файлы/описание.
 
@@ -58,11 +84,17 @@
   [src/setup.ts](../../../src/setup.ts).
 - Поле `completionFlow` в типе сессии
   ([src/types/session.ts:8](../../../src/types/session.ts#L8)) и все его
-  использования, включая ветки `wasCompletionFlow` в `handleMediaDone`
-  и `handleIncomingComment` (эти функции упрощаются до единственного
-  пути — просто перерисовывают карточку заявки).
+  использования — не только ветки `wasCompletionFlow` в
+  `handleMediaDone` и `handleIncomingComment` (упрощаются до
+  единственного пути — просто перерисовывают карточку заявки), но и
+  сами присваивания `completionFlow: false`, разбросанные по
+  `handleStatusConfirm`, `handleStatusCancel`, `handleAddMediaButton` и
+  `handleBackToDetail` — их тоже нужно убрать.
 - `startCompletionFlow` схлопывается в прямой вызов нового экрана
   (без установки `WAITING_MEDIA` и `completionFlow`).
+- Комментарий над `handleBackToDetail` упоминает «completion wizard's
+  photo/work-done steps» — обновить/убрать эту часть, поскольку таких
+  шагов больше не существует.
 
 Не удаляется (используется независимо, вне визарда):
 
