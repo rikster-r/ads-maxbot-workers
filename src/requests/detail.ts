@@ -248,7 +248,7 @@ export async function handleStatusAction(ctx: BotContext, requestId: number) {
     await ctx.answerOnCallback({ notification: 'Не удалось изменить статус' });
     return;
   }
-  await ctx.answerOnCallback({ notification: 'Статус изменён' });
+  await ackCallback(ctx);
 }
 
 export async function handleStatusConfirm(
@@ -266,7 +266,7 @@ export async function handleStatusConfirm(
     await ctx.answerOnCallback({ notification: 'Не удалось изменить статус' });
     return;
   }
-  await ctx.answerOnCallback({ notification: 'Статус изменён' });
+  await ackCallback(ctx);
 }
 
 export async function handleStatusCancel(ctx: BotContext, requestId: number) {
