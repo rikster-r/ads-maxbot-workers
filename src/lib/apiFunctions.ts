@@ -19,7 +19,7 @@ export async function loginToAPI(
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ login, password }),
+      body: JSON.stringify({ login: login.toLowerCase(), password }),
     });
     if (!response.ok) {
       logger.error({ status: response.status }, 'API auth error');
