@@ -212,6 +212,11 @@ export async function handleStatusAction(ctx: BotContext, requestId: number) {
   }
 
   if (completionStatuses.includes(request.status)) {
+    if (request.files.length === 0) {
+      await ackCallback(ctx, 'Нужны файлы');
+      await ctx.reply('⚠️ Перед завершением заявки добавьте хотя бы одно фото или видео.');
+      return;
+    }
     await showCompletionConfirm(ctx, request);
     return;
   }
@@ -231,6 +236,19 @@ export async function handleStatusConfirm(
 ) {
   const session = await requireFieldWorker(ctx);
   if (!session) return;
+
+  // Re-check files here too — they may have been deleted while this
+  // confirm screen was open.
+  const request = await getRequestDetail(session.token, requestId);
+  if (!request) {
+    await ctx.answerOnCallback({ notification: 'Не удалось загрузить заявку' });
+    return;
+  }
+  if (request.files.length === 0) {
+    await ackCallback(ctx, 'Нужны файлы');
+    await ctx.reply('⚠️ Перед завершением заявки добавьте хотя бы одно фото или видео.');
+    return;
+  }
 
   ctx.session = { ...ctx.session, state: BotState.IDLE };
 
