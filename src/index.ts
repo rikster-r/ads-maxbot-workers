@@ -2,6 +2,7 @@ import 'dotenv/config';
 import express from 'express';
 import { bot } from './setup.js';
 import { logger } from './logger.js';
+import { registerWebhook } from './lib/webhook.js';
 
 const { BOT_TOKEN, WEBHOOK_URL, WEBHOOK_SECRET, PORT } = process.env;
 
@@ -13,44 +14,9 @@ if (!/^[A-Za-z0-9_-]{5,256}$/.test(WEBHOOK_SECRET)) {
   throw new Error('WEBHOOK_SECRET must be 5–256 chars [A-Za-z0-9_-]');
 }
 
-const MAX_API_BASE = 'https://platform-api.max.ru';
-
 bot.catch((err: unknown) => {
   logger.error({ err }, 'Bot error');
 });
-
-async function registerWebhook(): Promise<void> {
-  try {
-    const deleteRes = await fetch(`${MAX_API_BASE}/subscriptions`, {
-      method: 'DELETE',
-      headers: { Authorization: BOT_TOKEN! },
-    });
-    if (!deleteRes.ok && deleteRes.status !== 404) {
-      logger.warn(
-        { status: deleteRes.status },
-        'DELETE /subscriptions returned non-OK status',
-      );
-    }
-  } catch (err) {
-    logger.warn({ err }, 'DELETE /subscriptions failed');
-  }
-
-  const postRes = await fetch(`${MAX_API_BASE}/subscriptions`, {
-    method: 'POST',
-    headers: {
-      Authorization: BOT_TOKEN!,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ url: WEBHOOK_URL, secret: WEBHOOK_SECRET }),
-  });
-
-  if (!postRes.ok) {
-    const body = await postRes.text();
-    throw new Error(`POST /subscriptions failed ${postRes.status}: ${body}`);
-  }
-
-  logger.info('Webhook registered successfully');
-}
 
 async function main(): Promise<void> {
   (bot as any).botInfo = await bot.api.getMyInfo();
@@ -84,7 +50,7 @@ async function main(): Promise<void> {
   });
   logger.info({ port: PORT }, 'Server listening');
 
-  await registerWebhook();
+  await registerWebhook(BOT_TOKEN!, WEBHOOK_URL!, WEBHOOK_SECRET!);
   logger.info('Bot started successfully!');
 
   process.on('SIGTERM', () => {
