@@ -1,6 +1,5 @@
 import { ackCallback, BotContext } from '../bot.js';
 import { getWorkerDatabase } from '../db.js';
-import { isUser } from '../constants/roles.js';
 import { tabLabels, userStatusMap } from '../constants/requestStatus.js';
 import { getFullHouseAddress } from '../lib/houses.js';
 import { getCachedUserRequests } from './cache.js';
@@ -14,11 +13,9 @@ export interface WorkerSession {
   adsUserId: number;
 }
 
-const NOT_A_FIELD_WORKER_MESSAGE = 'Извините, бот доступен только для исполнителей';
-
 /**
- * Guards any /requests entry point or req:* action: not logged in, role isn't
- * a field worker, or session expired all short-circuit here.
+ * Guards any /requests entry point or req:* action: not logged in, no
+ * profile, or session expired all short-circuit here.
  */
 export async function requireFieldWorker(ctx: BotContext): Promise<WorkerSession | null> {
   const maxUserId = ctx.user?.user_id;
@@ -34,13 +31,8 @@ export async function requireFieldWorker(ctx: BotContext): Promise<WorkerSession
     return null;
   }
 
-  if (!session.ads_user_id || !session.role) {
+  if (!session.ads_user_id) {
     await ctx.reply('🔐 Не удалось получить профиль. Авторизуйтесь заново: /start');
-    return null;
-  }
-
-  if (!isUser(session.role)) {
-    await ctx.reply(NOT_A_FIELD_WORKER_MESSAGE);
     return null;
   }
 

@@ -97,34 +97,47 @@ class WorkerDatabase {
   }
 
   /**
-   * All non-expired sessions belonging to the given roles, used to
-   * re-subscribe Pusher channels after a process restart and to fan out
-   * notifications to dispatchers
+   * All non-expired sessions with a profile, used to re-subscribe Pusher
+   * channels after a process restart
    */
-  getActiveSessionsByRoles(roles: string[]): WorkerSession[] {
-    const placeholders = roles.map(() => '?').join(', ');
+  getActiveSessions(): WorkerSession[] {
     const stmt = this.db.prepare(`
       SELECT * FROM worker_sessions
-      WHERE expires_at > ? AND ads_user_id IS NOT NULL AND lower(role) IN (${placeholders})
+      WHERE expires_at > ? AND ads_user_id IS NOT NULL
     `);
 
-    return stmt.all(new Date().toISOString(), ...roles) as WorkerSession[];
+    return stmt.all(new Date().toISOString()) as WorkerSession[];
   }
 
   /**
-   * Most recently active non-expired session's token among the given roles,
-   * used to authenticate the private Pusher channel handshake
+   * All non-expired sessions logged in as one of the given ads_user_ids,
+   * used to notify a request's assigned workers
    */
-  getAnyActiveSessionToken(roles: string[]): string | null {
-    const placeholders = roles.map(() => '?').join(', ');
+  getActiveSessionsByAdsUserIds(adsUserIds: number[]): WorkerSession[] {
+    if (adsUserIds.length === 0) return [];
+
+    const placeholders = adsUserIds.map(() => '?').join(', ');
+    const stmt = this.db.prepare(`
+      SELECT * FROM worker_sessions
+      WHERE expires_at > ? AND ads_user_id IN (${placeholders})
+    `);
+
+    return stmt.all(new Date().toISOString(), ...adsUserIds) as WorkerSession[];
+  }
+
+  /**
+   * Most recently active non-expired session's token, used to authenticate
+   * the private Pusher channel handshake
+   */
+  getAnyActiveSessionToken(): string | null {
     const stmt = this.db.prepare(`
       SELECT token FROM worker_sessions
-      WHERE expires_at > ? AND lower(role) IN (${placeholders})
+      WHERE expires_at > ?
       ORDER BY updated_at DESC
       LIMIT 1
     `);
 
-    const row = stmt.get(new Date().toISOString(), ...roles) as { token: string } | undefined;
+    const row = stmt.get(new Date().toISOString()) as { token: string } | undefined;
     return row?.token ?? null;
   }
 

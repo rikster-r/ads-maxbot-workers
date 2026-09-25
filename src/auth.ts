@@ -2,7 +2,6 @@ import { Keyboard } from '@maxhub/max-bot-api';
 import { ackCallback, BotContext, BotState, resetSession } from './bot.js';
 import { getWorkerDatabase } from './db.js';
 import { loginToAPI, getProfile } from './lib/apiFunctions.js';
-import { isUser } from './constants/roles.js';
 import { subscribeUserChannel, unsubscribeUserChannel } from './lib/realtime.js';
 import { handleRequestsList } from './requests/list.js';
 import { logger } from './logger.js';
@@ -89,22 +88,12 @@ export async function handlePasswordInput(ctx: BotContext, text: string) {
   ctx.session.login = null;
 
   const profile = await getProfile(token);
-  if (profile) {
-    db.saveProfile(userId, profile.id, profile.role, profile.name);
-
-    if (isUser(profile.role)) {
-      subscribeUserChannel(profile.id);
-      await ctx.reply('✅ Авторизация успешно завершена!');
-      await handleRequestsList(ctx);
-      return;
-    }
-  }
-
   await ctx.reply('✅ Авторизация успешно завершена!');
+  if (!profile) return;
 
-  if (profile && !isUser(profile.role)) {
-    await ctx.reply('Извините, бот доступен только для исполнителей');
-  }
+  db.saveProfile(userId, profile.id, profile.role, profile.name);
+  subscribeUserChannel(profile.id);
+  await handleRequestsList(ctx);
 }
 
 function buildLogoutConfirmKeyboard() {

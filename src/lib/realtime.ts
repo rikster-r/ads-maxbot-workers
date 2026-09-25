@@ -2,8 +2,7 @@ import { createRequire } from 'node:module';
 import { logger } from '../logger.js';
 import { invalidate } from '../requests/cache.js';
 import { getWorkerDatabase } from '../db.js';
-import { adminRoles, userRoles, viewerRoles } from '../constants/roles.js';
-import { notifyDispatchersOfNewApplication } from '../notifications/applicationCreated.js';
+import { notifyAssignedWorkersOfNewApplication } from '../notifications/applicationCreated.js';
 import type { ApplicationCreatedPayload } from '../notifications/applicationCreated.js';
 
 // pusher-js's shipped .d.ts doesn't resolve cleanly as a default import under
@@ -28,9 +27,10 @@ let applicationCreatedChannel: PusherChannel | null = null;
 function getClient(): PusherInstance | null {
   const key = process.env.PUSHER_KEY;
   const cluster = process.env.PUSHER_CLUSTER;
+  const pusherUrl = process.env.PUSHER_URL;
 
-  if (!key || !cluster) {
-    logger.warn('PUSHER_KEY/PUSHER_CLUSTER missing — realtime request updates disabled');
+  if (!key || !cluster || !pusherUrl) {
+    logger.warn('PUSHER_KEY/PUSHER_CLUSTER/PUSHER_URL missing — realtime request updates disabled');
     return null;
   }
 
@@ -42,17 +42,33 @@ function getClient(): PusherInstance | null {
       cluster,
       channelAuthorization: {
         transport: 'ajax',
-        endpoint: `${process.env.API_URL}/broadcasting/auth`,
+        endpoint: `${pusherUrl}/broadcasting/auth`,
         headersProvider: () => {
-          const token = getWorkerDatabase().getAnyActiveSessionToken([...viewerRoles, ...adminRoles]);
+          const token = getWorkerDatabase().getAnyActiveSessionToken();
           return token ? { Authorization: `Bearer ${token}`, Accept: 'application/json' } : {};
         },
       },
     };
     client = new PusherClient(key, options) as PusherInstance;
+    const connection = (client as unknown as { connection: PusherChannel }).connection;
+    connection.bind('state_change', (states: unknown) => {
+      logger.info({ states }, 'Pusher connection state changed');
+    });
+    connection.bind('error', (error: unknown) => {
+      logger.error({ err: error }, 'Pusher connection error');
+    });
   }
 
   return client;
+}
+
+function bindSubscriptionLogging(channel: PusherChannel, channelName: string): void {
+  channel.bind('pusher:subscription_succeeded', () => {
+    logger.info({ channelName }, 'Pusher channel subscribed');
+  });
+  channel.bind('pusher:subscription_error', (error: unknown) => {
+    logger.error({ channelName, err: error }, 'Pusher channel subscription failed');
+  });
 }
 
 export function subscribeUserChannel(adsUserId: number): void {
@@ -61,7 +77,9 @@ export function subscribeUserChannel(adsUserId: number): void {
   const pusher = getClient();
   if (!pusher) return;
 
-  const channel = pusher.subscribe(`App.Models.User.${adsUserId}`);
+  const channelName = `App.Models.User.${adsUserId}`;
+  const channel = pusher.subscribe(channelName);
+  bindSubscriptionLogging(channel, channelName);
   channel.bind('application.updated', () => {
     invalidate(adsUserId);
   });
@@ -78,8 +96,8 @@ export function unsubscribeUserChannel(adsUserId: number): void {
 }
 
 /**
- * Subscribes once to the shared private dispatcher-notifications channel and
- * fans new applications out to every active dispatcher's chat.
+ * Subscribes once to the shared private applications channel and notifies
+ * each newly-created application's assigned worker(s) in their chat.
  */
 export function subscribeApplicationCreatedChannel(): void {
   if (applicationCreatedChannel) return;
@@ -88,21 +106,23 @@ export function subscribeApplicationCreatedChannel(): void {
   if (!pusher) return;
 
   applicationCreatedChannel = pusher.subscribe('private-Twin.Applications');
+  bindSubscriptionLogging(applicationCreatedChannel, 'private-Twin.Applications');
   applicationCreatedChannel.bind('application.created', (data: unknown) => {
-    notifyDispatchersOfNewApplication(data as ApplicationCreatedPayload).catch((error) =>
-      logger.error({ err: error }, 'Error notifying dispatchers of new application'),
+    logger.info({ data }, 'Received application.created event');
+    notifyAssignedWorkersOfNewApplication(data as ApplicationCreatedPayload).catch((error) =>
+      logger.error({ err: error }, 'Error notifying assigned workers of new application'),
     );
   });
 }
 
 /**
- * Re-subscribes every still-logged-in field worker's channel after a
- * process restart, since in-memory Pusher subscriptions don't survive PM2 restarts.
+ * Re-subscribes every still-logged-in user's channel after a process
+ * restart, since in-memory Pusher subscriptions don't survive PM2 restarts.
  */
 export function bootstrapRealtimeSubscriptions(): void {
   try {
     const db = getWorkerDatabase();
-    const sessions = db.getActiveSessionsByRoles(userRoles);
+    const sessions = db.getActiveSessions();
     for (const session of sessions) {
       if (session.ads_user_id) subscribeUserChannel(session.ads_user_id);
     }
