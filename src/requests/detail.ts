@@ -99,7 +99,7 @@ async function findBlockingActiveRequest(
   );
 }
 
-async function renderDetail(
+export async function renderDetail(
   session: WorkerSession,
   request: RequestRecord,
 ): Promise<{ text: string; keyboard: ReturnType<typeof buildDetailKeyboard> }> {
@@ -136,7 +136,7 @@ export async function handleOpenRequest(ctx: BotContext, requestId: number) {
   await ackCallback(ctx);
 }
 
-async function reRenderDetailAsReply(ctx: BotContext, session: WorkerSession, requestId: number) {
+export async function reRenderDetailAsReply(ctx: BotContext, session: WorkerSession, requestId: number) {
   const request = await getRequestDetail(session.token, requestId);
   if (!request) {
     await ctx.reply('❌ Не удалось загрузить заявку.');

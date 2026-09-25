@@ -11,6 +11,7 @@ import {
 import { getRequestDetail, type RequestRecord } from '../lib/requestsApi.js';
 import { getShortHouseAddress } from '../lib/houses.js';
 import { uploadBufferToMax } from '../lib/maxUpload.js';
+import { renderDetail, reRenderDetailAsReply } from './detail.js';
 import { buildHouseCardKeyboard, type HouseTab } from './keyboards.js';
 import { requireFieldWorker } from './list.js';
 
@@ -128,6 +129,12 @@ export async function handleHouseCardOpen(ctx: BotContext, requestId: number) {
     return;
   }
 
+  // Only one keyboard should be active at a time — strip the request
+  // card's keyboard (keeping its text) before the house card takes over.
+  // attachments: [] (not null) — MAX's edit endpoint doesn't reliably treat
+  // a null attachments field as "clear", so an explicit empty array is used.
+  const { text: requestText } = await renderDetail(session, request);
+  await ctx.editMessage({ text: requestText, attachments: [] });
   await ackCallback(ctx);
   await ctx.reply(formatHouseInfoText(houseSummary), {
     attachments: [buildHouseCardKeyboard(houseSummary.id, requestId, 'i')],
@@ -181,9 +188,13 @@ export async function handleHouseTabSwitch(
   }
 }
 
-export async function handleHouseCardBack(ctx: BotContext, _requestId: number) {
+export async function handleHouseCardBack(ctx: BotContext, requestId: number) {
   const session = await requireFieldWorker(ctx);
   if (!session) return;
 
+  // The house card message is discarded and the request card is re-sent
+  // fresh, so the active keyboard moves back to that new message.
+  await ctx.deleteMessage();
   await ackCallback(ctx);
+  await reRenderDetailAsReply(ctx, session, requestId);
 }

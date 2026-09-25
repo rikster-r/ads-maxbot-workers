@@ -40,14 +40,14 @@ export function buildDetailKeyboard(options: {
   // to completing the request — fixed order.
   if (COMPLETION_KEYBOARD_STATUSES.has(request.status)) {
     const rows: ReturnType<typeof button.callback>[][] = [
-      [button.callback('Карточка дома', `rh:${request.id}`)],
-      [button.callback('Выполненная работа', `rc:${request.id}`)],
-      [button.callback('Добавить фото и видео', `rm:${request.id}`)],
+      [button.callback('🏠 Карточка дома', `rh:${request.id}`)],
+      [button.callback('📝 Выполненная работа', `rc:${request.id}`)],
+      [button.callback('📷 Добавить фото и видео', `rm:${request.id}`)],
     ];
     if (showActionButton && nextLabel) {
-      rows.push([button.callback(nextLabel, `rs:${request.id}`)]);
+      rows.push([button.callback(`✅ ${nextLabel}`, `rs:${request.id}`)]);
     }
-    rows.push([button.callback('К списку заявок', `rl:${tab}`)]);
+    rows.push([button.callback('⬅️ К списку заявок', `rl:${tab}`)]);
     return inlineKeyboard(rows);
   }
 
