@@ -43,6 +43,9 @@ export function buildDetailKeyboard(options: {
       [button.callback('📝 Выполненная работа', `rc:${request.id}`)],
       [button.callback('📷 Добавить фото и видео', `rm:${request.id}`)],
     ];
+    if (hasFiles) {
+      rows.push([button.callback('📁 Файлы', `rdf:${request.id}`)]);
+    }
     if (showActionButton && nextLabel) {
       rows.push([button.callback(`✅ ${nextLabel}`, `rs:${request.id}`)]);
     }
@@ -56,15 +59,9 @@ export function buildDetailKeyboard(options: {
     rows.push([button.callback(nextLabel, `rs:${request.id}`)]);
   }
 
+  // Work description, media and files are only handled on the completion
+  // cards above; every other stage gets the action, the house card and a way back.
   rows.push([button.callback('🏠 Карточка дома', `rh:${request.id}`)]);
-
-  // Work description and media are only edited on the completion cards above;
-  // before that the card is just the action and a way back. Finished requests
-  // can still show their attached files.
-  if (tab === 'completed' && hasFiles) {
-    rows.push([button.callback('📁 Файлы', `rdf:${request.id}`)]);
-  }
-
   rows.push([button.callback('⬅️ К списку', `rl:${tab}`)]);
 
   return inlineKeyboard(rows);
