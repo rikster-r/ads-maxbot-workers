@@ -34,11 +34,12 @@ function houseDetailCardHeader(house: HouseDetail): string {
 // "only push non-empty lines" — mirrors formatDetailText's style. Numeric
 // count fields use `!= null` (not truthiness) so a legitimate 0 isn't
 // hidden; string fields use plain truthiness.
-function formatHouseInfoText(house: HouseSummary): string {
+function formatHouseInfoText(house: HouseSummary, organization: string | null): string {
   const lines: string[] = [houseCardHeader(house), ''];
 
   if (house.complex) lines.push(`Название ЖК: ${house.complex}`);
   if (house.full_address) lines.push(`Адрес: ${house.full_address}`);
+  if (organization) lines.push(`Организация: ${organization}`);
   if (house.count_entrance != null) lines.push(`Количество подъездов: ${house.count_entrance}`);
   if (house.count_floor != null) lines.push(`Количество этажей: ${house.count_floor}`);
   if (house.count_apartment != null) lines.push(`Количество квартир: ${house.count_apartment}`);
@@ -136,7 +137,7 @@ export async function handleHouseCardOpen(ctx: BotContext, requestId: number) {
   const { text: requestText } = await renderDetail(session, request);
   await ctx.editMessage({ text: requestText, attachments: [] });
   await ackCallback(ctx);
-  await ctx.reply(formatHouseInfoText(houseSummary), {
+  await ctx.reply(formatHouseInfoText(houseSummary, request.organization), {
     attachments: [buildHouseCardKeyboard(houseSummary.id, requestId, 'i')],
   });
 }
@@ -156,11 +157,11 @@ export async function handleHouseTabSwitch(
   if (tab === 'i') {
     const request = await getRequestDetail(session.token, requestId);
     const houseSummary = request ? extractHouseSummary(request) : null;
-    if (!houseSummary) {
+    if (!request || !houseSummary) {
       await ctx.answerOnCallback({ notification: 'Не удалось загрузить карточку дома' });
       return;
     }
-    text = formatHouseInfoText(houseSummary);
+    text = formatHouseInfoText(houseSummary, request.organization);
   } else {
     const house = await getHouseDetail(session.token, houseId);
     if (!house) {

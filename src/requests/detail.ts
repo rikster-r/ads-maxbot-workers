@@ -48,18 +48,15 @@ function problemText(request: RequestRecord): string | null {
 function formatDetailText(request: RequestRecord, blockingRequest: RequestRecord | null): string {
   const lines: string[] = [`📄 Заявка #${request.id}`, `Статус: ${request.status}`, ''];
 
+  lines.push(`Адрес: ${getFullHouseAddress(request)}`);
+  if (request.entrance) lines.push(`Подъезд: ${request.entrance}, этаж: ${request.floor ?? '—'}`);
+
+  if (request.applicant || request.customer) lines.push('');
   if (request.applicant) {
     lines.push(`Заявитель: ${request.applicant}${request.applicant_phone ? ` (${request.applicant_phone})` : ''}`);
   }
   if (request.customer) {
     lines.push(`Клиент: ${request.customer}${request.customer_phone ? ` (${request.customer_phone})` : ''}`);
-  }
-
-  lines.push('', `Адрес: ${getFullHouseAddress(request)}`);
-  if (request.entrance) lines.push(`Подъезд: ${request.entrance}, этаж: ${request.floor ?? '—'}`);
-
-  if (typeof request.organization === 'string' && request.organization) {
-    lines.push(`Организация: ${request.organization}`);
   }
 
   const problem = problemText(request);
