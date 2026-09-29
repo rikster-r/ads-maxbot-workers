@@ -53,15 +53,16 @@ export function buildDetailKeyboard(options: {
     return inlineKeyboard(rows);
   }
 
-  const rows: ReturnType<typeof button.callback>[][] = [];
+  // Work description, media and files are only handled on the completion
+  // cards above; every other stage gets the house card, the action and a way back.
+  const rows: ReturnType<typeof button.callback>[][] = [
+    [button.callback('🏠 Карточка дома', `rh:${request.id}`)],
+  ];
 
   if (showActionButton && nextLabel) {
     rows.push([button.callback(nextLabel, `rs:${request.id}`)]);
   }
 
-  // Work description, media and files are only handled on the completion
-  // cards above; every other stage gets the action, the house card and a way back.
-  rows.push([button.callback('🏠 Карточка дома', `rh:${request.id}`)]);
   rows.push([button.callback('⬅️ К списку', `rl:${tab}`)]);
 
   return inlineKeyboard(rows);
