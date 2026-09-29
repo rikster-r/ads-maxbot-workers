@@ -56,6 +56,8 @@ export function buildDetailKeyboard(options: {
     rows.push([button.callback(nextLabel, `rs:${request.id}`)]);
   }
 
+  rows.push([button.callback('🏠 Карточка дома', `rh:${request.id}`)]);
+
   // Work description and media are only edited on the completion cards above;
   // before that the card is just the action and a way back. Finished requests
   // can still show their attached files.
