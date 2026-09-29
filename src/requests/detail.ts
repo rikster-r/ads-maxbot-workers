@@ -67,8 +67,9 @@ function formatDetailText(request: RequestRecord, blockingRequest: RequestRecord
   if (request.problem_customer) lines.push(`Со слов заявителя: ${request.problem_customer}`);
   if (request.note) lines.push('', `Примечание: ${request.note}`);
 
-  lines.push('', `Выполненные работы: ${request.work_done || '—'}`);
-  lines.push(`Файлы: ${request.files.length}`);
+  if (request.work_done || request.files.length) lines.push('');
+  if (request.work_done) lines.push(`Выполненные работы: ${request.work_done}`);
+  if (request.files.length) lines.push(`Файлы: ${request.files.length}`);
 
   if (blockingRequest) {
     lines.push(
