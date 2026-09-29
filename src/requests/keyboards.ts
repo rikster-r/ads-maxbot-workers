@@ -7,7 +7,6 @@ type Tab = 'new' | 'accepted' | 'completed';
 
 const { inlineKeyboard, button } = Keyboard;
 
-const MINIMAL_KEYBOARD_STATUSES = new Set(['Отправлено исполнителю', 'В пути']);
 const COMPLETION_KEYBOARD_STATUSES = new Set(['Прибыл', 'На исполнении']);
 
 export function buildListKeyboard(
@@ -57,16 +56,11 @@ export function buildDetailKeyboard(options: {
     rows.push([button.callback(nextLabel, `rs:${request.id}`)]);
   }
 
-  // The accept-request ("Отправлено исполнителю") and en-route ("В пути")
-  // cards are single-action screens — keep them to just the action and a
-  // way back, without the in-progress editing buttons.
-  if (!MINIMAL_KEYBOARD_STATUSES.has(request.status)) {
-    rows.push([button.callback('📷 Добавить фото/видео', `rm:${request.id}`)]);
-    rows.push([button.callback('📝 Изменить описание работ', `rc:${request.id}`)]);
-
-    if (hasFiles) {
-      rows.push([button.callback('📁 Файлы', `rdf:${request.id}`)]);
-    }
+  // Work description and media are only edited on the completion cards above;
+  // before that the card is just the action and a way back. Finished requests
+  // can still show their attached files.
+  if (tab === 'completed' && hasFiles) {
+    rows.push([button.callback('📁 Файлы', `rdf:${request.id}`)]);
   }
 
   rows.push([button.callback('⬅️ К списку', `rl:${tab}`)]);
