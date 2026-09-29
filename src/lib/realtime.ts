@@ -95,9 +95,15 @@ export function unsubscribeUserChannel(adsUserId: number): void {
   channels.delete(adsUserId);
 }
 
+const APPLICATIONS_CHANNEL = 'private-Twin.Applications';
+
 /**
  * Subscribes once to the shared private applications channel and notifies
  * each newly-created application's assigned worker(s) in their chat.
+ *
+ * The channel is private, so its auth request borrows a worker's session
+ * token. With no active session it's skipped, and a failed auth drops the
+ * channel so the next login can retry — pusher-js never retries it itself.
  */
 export function subscribeApplicationCreatedChannel(): void {
   if (applicationCreatedChannel) return;
@@ -105,9 +111,20 @@ export function subscribeApplicationCreatedChannel(): void {
   const pusher = getClient();
   if (!pusher) return;
 
-  applicationCreatedChannel = pusher.subscribe('private-Twin.Applications');
-  bindSubscriptionLogging(applicationCreatedChannel, 'private-Twin.Applications');
-  applicationCreatedChannel.bind('application.created', (data: unknown) => {
+  if (!getWorkerDatabase().getAnyActiveSessionToken()) {
+    logger.info('No active session — deferring applications channel subscription until login');
+    return;
+  }
+
+  const channel = pusher.subscribe(APPLICATIONS_CHANNEL);
+  applicationCreatedChannel = channel;
+  bindSubscriptionLogging(channel, APPLICATIONS_CHANNEL);
+  channel.bind('pusher:subscription_error', () => {
+    if (applicationCreatedChannel !== channel) return;
+    pusher.unsubscribe(APPLICATIONS_CHANNEL);
+    applicationCreatedChannel = null;
+  });
+  channel.bind('application.created', (data: unknown) => {
     logger.info({ data }, 'Received application.created event');
     notifyAssignedWorkersOfNewApplication(data as ApplicationCreatedPayload).catch((error) =>
       logger.error({ err: error }, 'Error notifying assigned workers of new application'),
