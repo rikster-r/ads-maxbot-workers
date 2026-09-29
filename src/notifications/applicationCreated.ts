@@ -22,6 +22,7 @@ export interface ApplicationCreatedRecord {
   apartment: string | null;
   intercom_code: string | null;
   note: string | null;
+  problem: string | { id: number; name: string } | null;
   problem_customer: string | null;
   applicant: string | null;
   applicant_phone: string | null;
@@ -52,9 +53,12 @@ export function formatApplicationCreatedText(app: ApplicationCreatedRecord): str
       `Заявитель: ${app.applicant}${app.applicant_phone ? ` (${app.applicant_phone})` : ''}`,
     );
   }
-  if (app.organization) lines.push(`Организация: ${app.organization}`);
 
   if (app.note) lines.push('', `Примечание: ${app.note}`);
+  if (app.problem) {
+    const problem = typeof app.problem === 'string' ? app.problem : app.problem.name;
+    lines.push(`Проблема: ${problem}`);
+  }
   if (app.problem_customer) lines.push(`Со слов заявителя: ${app.problem_customer}`);
 
   if (app.files.length > 0) lines.push('', `📎 Файлов: ${app.files.length}`);
