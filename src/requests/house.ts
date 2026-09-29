@@ -51,12 +51,14 @@ function formatHouseInfoText(house: HouseSummary, organization: string | null): 
   return lines.join('\n');
 }
 
+const NO_INFO = 'Нет информации';
+
 function formatHouseExtraText(house: HouseDetail): string {
   const lines: string[] = [houseDetailCardHeader(house), '', '🔧 Прочее', ''];
 
-  lines.push(`Шлагбаум: ${house.barrier ? 'Есть' : 'Нет'}`);
-  lines.push(`Подвал: ${house.basement ? 'Есть' : 'Нет'}`);
-  lines.push(`Техэтаж: ${house.technical_floor ? 'Есть' : 'Нет'}`);
+  lines.push(`Шлагбаум: ${house.barrier ? 'Есть' : NO_INFO}`);
+  lines.push(`Подвал: ${house.basement ? 'Есть' : NO_INFO}`);
+  lines.push(`Техэтаж: ${house.technical_floor ? 'Есть' : NO_INFO}`);
 
   const equipmentRows: [string, string | null][] = [
     ['ВРУ', house.vru],
