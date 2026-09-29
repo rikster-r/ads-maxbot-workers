@@ -127,8 +127,11 @@ export async function handleLogoutConfirm(ctx: BotContext) {
   db.deleteSession(userId);
   resetSession(ctx);
 
-  await ctx.editMessage({ text: '✅ Вы вышли из системы.', attachments: null });
+  // Strip the confirm keyboard (keeping its text) and report the logout
+  // as a separate message.
+  await ctx.editMessage({ text: 'Вы уверены, что хотите выйти?', attachments: [] });
   await ackCallback(ctx);
+  await ctx.reply('Вы вышли из системы.');
 }
 
 export async function handleLogoutCancel(ctx: BotContext) {
