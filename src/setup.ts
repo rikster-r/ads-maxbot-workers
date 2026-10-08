@@ -1,6 +1,12 @@
 import { bot } from './bot.js';
 import { handleStart, handleTextMessage } from './handlers.js';
-import { handleLogoutCancel, handleLogoutCommand, handleLogoutConfirm } from './auth.js';
+import {
+  handleLogoutCancel,
+  handleLogoutCommand,
+  handleLogoutConfirm,
+  handleSessionExpired,
+} from './auth.js';
+import { SessionExpiredError } from './lib/apiFetch.js';
 import { handleRequestsList, handleTabAction } from './requests/list.js';
 import {
   handleAddMediaButton,
@@ -24,6 +30,16 @@ import {
 } from './requests/house.js';
 import { bootstrapRealtimeSubscriptions } from './lib/realtime.js';
 import { handleAcceptApplication } from './requests/dispatcher.js';
+
+// Must be registered before the handlers so it wraps all of them
+bot.use(async (ctx, next) => {
+  try {
+    await next();
+  } catch (error) {
+    if (!(error instanceof SessionExpiredError)) throw error;
+    await handleSessionExpired(ctx);
+  }
+});
 
 bot.on('bot_started', handleStart);
 bot.command('start', handleStart);

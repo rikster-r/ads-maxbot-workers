@@ -12,18 +12,13 @@ import { logger } from './logger.js';
 
 const { inlineKeyboard, button } = Keyboard;
 
-const TOKEN_TTL_MS = 24 * 60 * 60 * 1000; // 24h
-
 /**
- * Whether this Max user has a saved API token that hasn't expired yet
+ * Whether this Max user has a saved API token
  */
 export function isLoggedIn(maxUserId: number): boolean {
   try {
     const db = getWorkerDatabase();
-    const session = db.getSession(maxUserId);
-    if (!session) return false;
-
-    return new Date(session.expires_at).getTime() > Date.now();
+    return !!db.getSession(maxUserId);
   } catch (error) {
     logger.error({ err: error }, 'Error reading worker session');
     return false;
@@ -77,11 +72,9 @@ export async function handlePasswordInput(ctx: BotContext, text: string) {
     return;
   }
 
-  const expiresAt = new Date(Date.now() + TOKEN_TTL_MS).toISOString();
-
   const db = getWorkerDatabase();
   try {
-    db.saveSession(userId, login, token, expiresAt);
+    db.saveSession(userId, login, token);
   } catch (error) {
     logger.error({ err: error }, 'Error saving worker session');
     await ctx.reply('❌ Произошла ошибка при сохранении авторизации. Попробуйте еще раз.');
@@ -137,6 +130,27 @@ export async function handleLogoutConfirm(ctx: BotContext) {
   await ctx.editMessage({ text: 'Вы уверены, что хотите выйти?', attachments: [] });
   await ackCallback(ctx);
   await ctx.reply('Вы вышли из системы.');
+}
+
+/**
+ * The ADS API rejected the stored token (see SessionExpiredError): drop the
+ * session the same way logout does and ask the worker to log in again.
+ */
+export async function handleSessionExpired(ctx: BotContext) {
+  const userId = ctx.user?.user_id;
+  if (userId) {
+    const db = getWorkerDatabase();
+    const session = db.getSession(userId);
+    if (session?.ads_user_id) {
+      unsubscribeUserChannel(session.ads_user_id);
+    }
+    db.deleteSession(userId);
+    resetSession(ctx);
+  }
+
+  // The handler may already have acked this callback; a second ack just fails.
+  if (ctx.callback) await ackCallback(ctx).catch(() => {});
+  await ctx.reply('🔐 Сессия истекла, авторизуйтесь заново: /start');
 }
 
 export async function handleLogoutCancel(ctx: BotContext) {

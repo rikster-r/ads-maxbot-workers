@@ -1,4 +1,5 @@
 import { logger } from '../logger.js';
+import { apiFetch, SessionExpiredError } from './apiFetch.js';
 import type { HouseSummary } from './housesApi.js';
 
 export interface RequestFile {
@@ -53,24 +54,19 @@ export interface RequestRecord {
   files: RequestFile[];
 }
 
-function authHeaders(token: string) {
-  return { Authorization: `Bearer ${token}` };
-}
-
 export async function getUserRequests(
   token: string,
   adsUserId: number,
 ): Promise<RequestRecord[] | null> {
   try {
-    const response = await fetch(`${process.env.API_URL}/users/${adsUserId}/requests`, {
-      headers: authHeaders(token),
-    });
+    const response = await apiFetch(token, `${process.env.API_URL}/users/${adsUserId}/requests`);
     if (!response.ok) {
       logger.error({ status: response.status }, 'API getUserRequests error');
       return null;
     }
     return await response.json();
   } catch (error) {
+    if (error instanceof SessionExpiredError) throw error;
     logger.error({ err: error }, 'Error fetching user requests');
     return null;
   }
@@ -81,15 +77,14 @@ export async function getRequestDetail(
   requestId: number,
 ): Promise<RequestRecord | null> {
   try {
-    const response = await fetch(`${process.env.API_URL}/requests/${requestId}`, {
-      headers: authHeaders(token),
-    });
+    const response = await apiFetch(token, `${process.env.API_URL}/requests/${requestId}`);
     if (!response.ok) {
       logger.error({ status: response.status }, 'API getRequestDetail error');
       return null;
     }
     return await response.json();
   } catch (error) {
+    if (error instanceof SessionExpiredError) throw error;
     logger.error({ err: error }, 'Error fetching request detail');
     return null;
   }
@@ -101,13 +96,14 @@ export async function changeRequestStatus(
   status: string,
 ): Promise<boolean> {
   try {
-    const response = await fetch(`${process.env.API_URL}/requests/${requestId}/status`, {
+    const response = await apiFetch(token, `${process.env.API_URL}/requests/${requestId}/status`, {
       method: 'PATCH',
-      headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status }),
     });
     return response.ok;
   } catch (error) {
+    if (error instanceof SessionExpiredError) throw error;
     logger.error({ err: error }, 'Error changing request status');
     return false;
   }
@@ -119,13 +115,14 @@ export async function addComment(
   comment: string,
 ): Promise<boolean> {
   try {
-    const response = await fetch(`${process.env.API_URL}/requests/${requestId}/comment`, {
+    const response = await apiFetch(token, `${process.env.API_URL}/requests/${requestId}/comment`, {
       method: 'POST',
-      headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ comment }),
     });
     return response.ok;
   } catch (error) {
+    if (error instanceof SessionExpiredError) throw error;
     logger.error({ err: error }, 'Error adding comment');
     return false;
   }
@@ -154,9 +151,8 @@ export async function uploadRequestMedia(
 
     // Do NOT set Content-Type manually — fetch/undici generates the
     // multipart boundary itself; a hardcoded header breaks parsing server-side.
-    const response = await fetch(`${process.env.API_URL}/requests/${requestId}/media`, {
+    const response = await apiFetch(token, `${process.env.API_URL}/requests/${requestId}/media`, {
       method: 'POST',
-      headers: authHeaders(token),
       body: formData,
     });
     if (!response.ok) {
@@ -167,6 +163,7 @@ export async function uploadRequestMedia(
     }
     return response.ok;
   } catch (error) {
+    if (error instanceof SessionExpiredError) throw error;
     logger.error({ err: error }, 'Error uploading request media');
     return false;
   }
@@ -174,12 +171,12 @@ export async function uploadRequestMedia(
 
 export async function deleteRequestFile(token: string, fileId: number): Promise<boolean> {
   try {
-    const response = await fetch(`${process.env.API_URL}/files/${fileId}`, {
+    const response = await apiFetch(token, `${process.env.API_URL}/files/${fileId}`, {
       method: 'DELETE',
-      headers: authHeaders(token),
     });
     return response.ok || response.status === 204;
   } catch (error) {
+    if (error instanceof SessionExpiredError) throw error;
     logger.error({ err: error }, 'Error deleting request file');
     return false;
   }
@@ -189,7 +186,7 @@ export async function deleteRequestFile(token: string, fileId: number): Promise<
 // the same bearer token as every other request here) — not a public/MAX
 // CDN url, so it can't just be handed to MAX to fetch on its own.
 export async function downloadRequestFile(token: string, url: string): Promise<Buffer> {
-  const response = await fetch(url, { headers: authHeaders(token) });
+  const response = await apiFetch(token, url);
   if (!response.ok) {
     throw new Error(`Failed to download file: ${response.status} ${url}`);
   }

@@ -4,7 +4,6 @@ export interface WorkerSession {
   max_user_id: number;
   login: string;
   token: string;
-  expires_at: string;
   created_at: string;
   updated_at: string;
   ads_user_id: number | null;
@@ -26,7 +25,6 @@ class WorkerDatabase {
         max_user_id INTEGER PRIMARY KEY,
         login TEXT NOT NULL,
         token TEXT NOT NULL,
-        expires_at TEXT NOT NULL,
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
       )
@@ -47,29 +45,28 @@ class WorkerDatabase {
         this.db.exec(`ALTER TABLE worker_sessions ADD COLUMN ${column} ${definition}`);
       }
     }
+
+    // Sessions no longer expire; drop the legacy column from older databases
+    if (existingColumns.has('expires_at')) {
+      this.db.exec('ALTER TABLE worker_sessions DROP COLUMN expires_at');
+    }
   }
 
   /**
-   * Save or update a worker's API session (token + expiry)
+   * Save or update a worker's API session
    */
-  saveSession(
-    maxUserId: number,
-    login: string,
-    token: string,
-    expiresAt: string,
-  ): void {
+  saveSession(maxUserId: number, login: string, token: string): void {
     const stmt = this.db.prepare(`
       INSERT INTO worker_sessions
-        (max_user_id, login, token, expires_at, updated_at)
-      VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+        (max_user_id, login, token, updated_at)
+      VALUES (?, ?, ?, CURRENT_TIMESTAMP)
       ON CONFLICT(max_user_id) DO UPDATE SET
         login = excluded.login,
         token = excluded.token,
-        expires_at = excluded.expires_at,
         updated_at = CURRENT_TIMESTAMP
     `);
 
-    stmt.run(maxUserId, login, token, expiresAt);
+    stmt.run(maxUserId, login, token);
   }
 
   /**
@@ -97,21 +94,21 @@ class WorkerDatabase {
   }
 
   /**
-   * All non-expired sessions with a profile, used to re-subscribe Pusher
-   * channels after a process restart
+   * All sessions with a profile, used to re-subscribe Pusher channels after
+   * a process restart
    */
   getActiveSessions(): WorkerSession[] {
     const stmt = this.db.prepare(`
       SELECT * FROM worker_sessions
-      WHERE expires_at > ? AND ads_user_id IS NOT NULL
+      WHERE ads_user_id IS NOT NULL
     `);
 
-    return stmt.all(new Date().toISOString()) as WorkerSession[];
+    return stmt.all() as WorkerSession[];
   }
 
   /**
-   * All non-expired sessions logged in as one of the given ads_user_ids,
-   * used to notify a request's assigned workers
+   * All sessions logged in as one of the given ads_user_ids, used to notify
+   * a request's assigned workers
    */
   getActiveSessionsByAdsUserIds(adsUserIds: number[]): WorkerSession[] {
     if (adsUserIds.length === 0) return [];
@@ -119,25 +116,24 @@ class WorkerDatabase {
     const placeholders = adsUserIds.map(() => '?').join(', ');
     const stmt = this.db.prepare(`
       SELECT * FROM worker_sessions
-      WHERE expires_at > ? AND ads_user_id IN (${placeholders})
+      WHERE ads_user_id IN (${placeholders})
     `);
 
-    return stmt.all(new Date().toISOString(), ...adsUserIds) as WorkerSession[];
+    return stmt.all(...adsUserIds) as WorkerSession[];
   }
 
   /**
-   * Most recently active non-expired session's token, used to authenticate
-   * the private Pusher channel handshake
+   * Most recently active session's token, used to authenticate the private
+   * Pusher channel handshake
    */
   getAnyActiveSessionToken(): string | null {
     const stmt = this.db.prepare(`
       SELECT token FROM worker_sessions
-      WHERE expires_at > ?
       ORDER BY updated_at DESC
       LIMIT 1
     `);
 
-    const row = stmt.get(new Date().toISOString()) as { token: string } | undefined;
+    const row = stmt.get() as { token: string } | undefined;
     return row?.token ?? null;
   }
 

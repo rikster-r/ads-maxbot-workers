@@ -9,6 +9,7 @@ import {
   type HouseSummary,
 } from '../lib/housesApi.js';
 import { getRequestDetail, type RequestRecord } from '../lib/requestsApi.js';
+import { SessionExpiredError } from '../lib/apiFetch.js';
 import { getShortHouseAddress } from '../lib/houses.js';
 import { uploadBufferToMax } from '../lib/maxUpload.js';
 import { renderDetail, reRenderDetailAsReply } from './detail.js';
@@ -108,6 +109,7 @@ async function buildHouseFilePreviewAttachments(token: string, files: HouseFile[
         const attachment = await uploadBufferToMax(kind, data);
         return attachment.toJson();
       } catch (error) {
+        if (error instanceof SessionExpiredError) throw error;
         logger.error({ err: error, fileId: file.id }, 'Failed to build house file preview attachment');
         return null;
       }

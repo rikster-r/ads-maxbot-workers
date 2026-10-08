@@ -1,4 +1,5 @@
 import { logger } from '../logger.js';
+import { apiFetch, SessionExpiredError } from './apiFetch.js';
 
 export interface HouseAddressType {
   id: number;
@@ -71,21 +72,16 @@ export interface HouseDetail {
   files: HouseFile[];
 }
 
-function authHeaders(token: string) {
-  return { Authorization: `Bearer ${token}` };
-}
-
 export async function getHouseDetail(token: string, houseId: number): Promise<HouseDetail | null> {
   try {
-    const response = await fetch(`${process.env.API_URL}/houses/${houseId}`, {
-      headers: authHeaders(token),
-    });
+    const response = await apiFetch(token, `${process.env.API_URL}/houses/${houseId}`);
     if (!response.ok) {
       logger.error({ status: response.status }, 'API getHouseDetail error');
       return null;
     }
     return await response.json();
   } catch (error) {
+    if (error instanceof SessionExpiredError) throw error;
     logger.error({ err: error }, 'Error fetching house detail');
     return null;
   }
@@ -102,7 +98,7 @@ export function getHouseFileKind(file: HouseFile): 'image' | 'video' | 'other' {
 // the bearer token, since omitting a required header breaks downloads
 // outright while sending an unneeded one is harmless.
 export async function downloadHouseFile(token: string, url: string): Promise<Buffer> {
-  const response = await fetch(url, { headers: authHeaders(token) });
+  const response = await apiFetch(token, url);
   if (!response.ok) {
     throw new Error(`Failed to download house file: ${response.status} ${url}`);
   }

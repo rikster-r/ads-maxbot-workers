@@ -14,8 +14,8 @@ export interface WorkerSession {
 }
 
 /**
- * Guards any /requests entry point or req:* action: not logged in, no
- * profile, or session expired all short-circuit here.
+ * Guards any /requests entry point or req:* action: not logged in or no
+ * profile both short-circuit here.
  */
 export async function requireFieldWorker(ctx: BotContext): Promise<WorkerSession | null> {
   const maxUserId = ctx.user?.user_id;
@@ -26,8 +26,8 @@ export async function requireFieldWorker(ctx: BotContext): Promise<WorkerSession
 
   const db = getWorkerDatabase();
   const session = db.getSession(maxUserId);
-  if (!session || new Date(session.expires_at).getTime() <= Date.now()) {
-    await ctx.reply('🔐 Сессия истекла, авторизуйтесь заново: /start');
+  if (!session) {
+    await ctx.reply('🔐 Сначала авторизуйтесь: /start');
     return null;
   }
 

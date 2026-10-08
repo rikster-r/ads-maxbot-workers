@@ -20,6 +20,7 @@ import {
   type RequestFile,
   type RequestRecord,
 } from '../lib/requestsApi.js';
+import { SessionExpiredError } from '../lib/apiFetch.js';
 import { invalidate } from './cache.js';
 import { getFullHouseAddress } from '../lib/houses.js';
 import { uploadBufferToMax } from '../lib/maxUpload.js';
@@ -376,6 +377,7 @@ async function buildFilePreviewAttachments(token: string, files: RequestFile[]) 
         const attachment = await uploadBufferToMax(kind, data);
         return attachment.toJson();
       } catch (error) {
+        if (error instanceof SessionExpiredError) throw error;
         logger.error({ err: error, fileId: file.id }, 'Failed to build file preview attachment');
         return null;
       }
@@ -583,6 +585,7 @@ export async function handleIncomingMedia(ctx: BotContext) {
       attachments: [buildMediaCollectionKeyboard(requestId)],
     });
   } catch (error) {
+    if (error instanceof SessionExpiredError) throw error;
     logger.error({ err: error }, 'Error handling incoming media');
     await ctx.reply('❌ Не удалось загрузить файлы. Попробуйте ещё раз.');
   }
