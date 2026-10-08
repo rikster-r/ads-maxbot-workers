@@ -1,6 +1,7 @@
 import { ackCallback, BotContext } from '../bot.js';
 import { getWorkerDatabase } from '../db.js';
-import { formatStatus, tabLabels, userStatusMap } from '../constants/requestStatus.js';
+import { formatPriority } from '../constants/requestPriority.js';
+import { tabLabels, userStatusMap } from '../constants/requestStatus.js';
 import { getFullHouseAddress } from '../lib/houses.js';
 import { getCachedUserRequests } from './cache.js';
 import { buildListKeyboard } from './keyboards.js';
@@ -45,7 +46,7 @@ function bucketByTab(requests: RequestRecord[], tab: Tab): RequestRecord[] {
 
 function formatRequestLine(request: RequestRecord, index: number): string {
   const person = request.customer || request.applicant || '—';
-  return `${index + 1}. #${request.id} — ${getFullHouseAddress(request)}\n${formatStatus(request.status)}\n👤 ${person} · ${request.priority} · ${request.created_at}`;
+  return `${index + 1}. #${request.id} — ${getFullHouseAddress(request)}\n${formatPriority(request.priority)}\n👤 ${person} · ${request.created_at}`;
 }
 
 export function renderListMessage(
