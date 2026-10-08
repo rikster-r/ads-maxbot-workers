@@ -2,11 +2,7 @@ import { Keyboard } from '@maxhub/max-bot-api';
 import { ackCallback, BotContext, BotState, resetSession } from './bot.js';
 import { getWorkerDatabase } from './db.js';
 import { loginToAPI, getProfile } from './lib/apiFunctions.js';
-import {
-  subscribeApplicationCreatedChannel,
-  subscribeUserChannel,
-  unsubscribeUserChannel,
-} from './lib/realtime.js';
+import { subscribeUserChannel, unsubscribeUserChannel } from './lib/realtime.js';
 import { handleRequestsList } from './requests/list.js';
 import { logger } from './logger.js';
 
@@ -83,7 +79,6 @@ export async function handlePasswordInput(ctx: BotContext, text: string) {
 
   ctx.session.state = BotState.IDLE;
   ctx.session.login = null;
-  subscribeApplicationCreatedChannel();
 
   const profile = await getProfile(token);
   await ctx.reply('✅ Авторизация успешно завершена!');

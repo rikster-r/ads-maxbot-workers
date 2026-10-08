@@ -2,79 +2,66 @@ import { Keyboard } from '@maxhub/max-bot-api';
 import { bot } from '../bot.js';
 import { getWorkerDatabase } from '../db.js';
 import { logger } from '../logger.js';
+import { getFullHouseAddress } from '../lib/houses.js';
+import { getRequestDetail, type RequestRecord } from '../lib/requestsApi.js';
 
 const { inlineKeyboard, button } = Keyboard;
 
-export interface ApplicationCreatedFile {
-  id: number;
-  url: string;
-  name: string;
+export interface UserNotificationPayload {
+  id: string;
+  data: { message?: string };
 }
 
-export interface ApplicationCreatedRecord {
-  id: number;
-  created_at: string;
-  customer: string | null;
-  phone: string | null;
-  organization: string | null;
-  entrance: string | null;
-  floor: string | null;
-  apartment: string | null;
-  intercom_code: string | null;
-  note: string | null;
-  problem: string | { id: number; name: string } | null;
-  problem_customer: string | null;
-  applicant: string | null;
-  applicant_phone: string | null;
-  address: string | null;
-  files: ApplicationCreatedFile[];
-  users: number[];
-}
-
-export interface ApplicationCreatedPayload {
-  application: ApplicationCreatedRecord;
-}
+const ASSIGNED_REQUEST_ID = /№\s*(\d+)/;
 
 export function buildAcceptApplicationKeyboard(requestId: number) {
   return inlineKeyboard([[button.callback('✅ Принять', `ac:${requestId}`)]]);
 }
 
-export function formatApplicationCreatedText(app: ApplicationCreatedRecord): string {
-  const lines: string[] = [`🆕 Новая заявка #${app.id}`, ''];
+export function formatApplicationAssignedText(message: string, request: RequestRecord): string {
+  const lines: string[] = [message, ''];
 
-  if (app.address) lines.push(`Адрес: ${app.address}`);
-  if (app.entrance) lines.push(`Подъезд: ${app.entrance}, этаж: ${app.floor ?? '—'}`);
+  if (request.house) lines.push(`Адрес: ${getFullHouseAddress(request)}`);
+  if (request.entrance) lines.push(`Подъезд: ${request.entrance}, этаж: ${request.floor ?? '—'}`);
 
-  if (app.customer) {
-    lines.push(`Клиент: ${app.customer}${app.phone ? ` (${app.phone})` : ''}`);
-  }
-  if (app.applicant) {
-    lines.push(
-      `Заявитель: ${app.applicant}${app.applicant_phone ? ` (${app.applicant_phone})` : ''}`,
-    );
+  if (request.customer) {
+    lines.push(`Клиент: ${request.customer}${request.customer_phone ? ` (${request.customer_phone})` : ''}`);
   }
 
-  if (app.note) lines.push('', `Примечание: ${app.note}`);
-  if (app.problem) {
-    const problem = typeof app.problem === 'string' ? app.problem : app.problem.name;
+  if (request.note) lines.push('', `Примечание: ${request.note}`);
+  if (request.problem) {
+    const problem = typeof request.problem === 'string' ? request.problem : request.problem.name;
     lines.push(`Проблема: ${problem}`);
   }
-  if (app.problem_customer) lines.push(`Со слов заявителя: ${app.problem_customer}`);
-
-  if (app.files.length > 0) lines.push('', `📎 Файлов: ${app.files.length}`);
 
   return lines.join('\n');
 }
 
-export async function notifyAssignedWorkersOfNewApplication(
-  payload: ApplicationCreatedPayload,
+/**
+ * Handles a `notifications` event from a worker's private channel: the
+ * payload only carries the message text, so the request number is parsed
+ * out of it and the details are fetched with that worker's own token.
+ */
+export async function notifyWorkerOfAssignedApplication(
+  adsUserId: number,
+  payload: UserNotificationPayload,
 ): Promise<void> {
-  const app = payload.application;
-  const workers = getWorkerDatabase().getActiveSessionsByAdsUserIds(app.users);
+  const message = payload.data?.message;
+  const match = message?.match(ASSIGNED_REQUEST_ID);
+  if (!message || !match) return;
+
+  const workers = getWorkerDatabase().getActiveSessionsByAdsUserIds([adsUserId]);
   if (workers.length === 0) return;
 
-  const text = formatApplicationCreatedText(app);
-  const keyboard = buildAcceptApplicationKeyboard(app.id);
+  const requestId = Number(match[1]);
+  const request = await getRequestDetail(workers[0].token, requestId);
+  if (!request) {
+    logger.error({ requestId, adsUserId }, 'Could not load assigned request for notification');
+    return;
+  }
+
+  const text = formatApplicationAssignedText(message, request);
+  const keyboard = buildAcceptApplicationKeyboard(requestId);
 
   const results = await Promise.allSettled(
     workers.map((session) =>
@@ -84,7 +71,7 @@ export async function notifyAssignedWorkersOfNewApplication(
 
   for (const result of results) {
     if (result.status === 'rejected') {
-      logger.error({ err: result.reason }, 'Error sending new-application notification');
+      logger.error({ err: result.reason }, 'Error sending assigned-application notification');
     }
   }
 }

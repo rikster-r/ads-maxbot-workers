@@ -123,17 +123,18 @@ class WorkerDatabase {
   }
 
   /**
-   * Most recently active session's token, used to authenticate the private
-   * Pusher channel handshake
+   * Most recently active token for one ads user, used to authorize that
+   * user's own private Pusher channel
    */
-  getAnyActiveSessionToken(): string | null {
+  getSessionTokenByAdsUserId(adsUserId: number): string | null {
     const stmt = this.db.prepare(`
       SELECT token FROM worker_sessions
+      WHERE ads_user_id = ?
       ORDER BY updated_at DESC
       LIMIT 1
     `);
 
-    const row = stmt.get() as { token: string } | undefined;
+    const row = stmt.get(adsUserId) as { token: string } | undefined;
     return row?.token ?? null;
   }
 

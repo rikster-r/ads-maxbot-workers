@@ -2,8 +2,8 @@ import { createRequire } from 'node:module';
 import { logger } from '../logger.js';
 import { invalidate } from '../requests/cache.js';
 import { getWorkerDatabase } from '../db.js';
-import { notifyAssignedWorkersOfNewApplication } from '../notifications/applicationCreated.js';
-import type { ApplicationCreatedPayload } from '../notifications/applicationCreated.js';
+import { notifyWorkerOfAssignedApplication } from '../notifications/applicationCreated.js';
+import type { UserNotificationPayload } from '../notifications/applicationCreated.js';
 
 // pusher-js's shipped .d.ts doesn't resolve cleanly as a default import under
 // NodeNext + a CJS-only package (TS2709 "Cannot use namespace as a type"), so
@@ -22,7 +22,8 @@ interface PusherInstance {
 
 let client: PusherInstance | null = null;
 const channels = new Map<number, PusherChannel>();
-let applicationCreatedChannel: PusherChannel | null = null;
+
+const USER_CHANNEL_PREFIX = 'private-App.Models.User.';
 
 function getClient(): PusherInstance | null {
   const key = process.env.PUSHER_KEY;
@@ -35,17 +36,18 @@ function getClient(): PusherInstance | null {
   }
 
   if (!client) {
-    // pusher-js's shipped Options type doesn't include headersProvider despite
-    // the runtime supporting it (confirmed in dist/node/pusher.js), so the
-    // options object is built loosely typed here.
+    // A custom handler instead of the built-in ajax transport, so each user
+    // channel is authorized with its own user's token.
     const options = {
       cluster,
       channelAuthorization: {
-        transport: 'ajax',
-        endpoint: `${pusherUrl}/broadcasting/auth`,
-        headersProvider: () => {
-          const token = getWorkerDatabase().getAnyActiveSessionToken();
-          return token ? { Authorization: `Bearer ${token}`, Accept: 'application/json' } : {};
+        customHandler: (
+          params: { socketId: string; channelName: string },
+          callback: (error: Error | null, authData: unknown) => void,
+        ) => {
+          authorizeChannel(`${pusherUrl}/broadcasting/auth`, params.socketId, params.channelName)
+            .then((authData) => callback(null, authData))
+            .catch((error: Error) => callback(error, null));
         },
       },
     };
@@ -62,74 +64,76 @@ function getClient(): PusherInstance | null {
   return client;
 }
 
-function bindSubscriptionLogging(channel: PusherChannel, channelName: string): void {
-  channel.bind('pusher:subscription_succeeded', () => {
-    logger.info({ channelName }, 'Pusher channel subscribed');
+/**
+ * A user's private channel must be authorized with that user's own token.
+ */
+async function authorizeChannel(endpoint: string, socketId: string, channelName: string): Promise<unknown> {
+  const adsUserId = Number(channelName.slice(USER_CHANNEL_PREFIX.length));
+  const token = channelName.startsWith(USER_CHANNEL_PREFIX)
+    ? getWorkerDatabase().getSessionTokenByAdsUserId(adsUserId)
+    : null;
+
+  if (!token) throw new Error(`No session token to authorize ${channelName}`);
+
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/json',
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: new URLSearchParams({ socket_id: socketId, channel_name: channelName }),
   });
-  channel.bind('pusher:subscription_error', (error: unknown) => {
-    logger.error({ channelName, err: error }, 'Pusher channel subscription failed');
-  });
+
+  if (!response.ok) {
+    throw new Error(`Channel auth for ${channelName} failed: ${response.status} ${await response.text()}`);
+  }
+
+  return response.json();
 }
 
+/**
+ * Subscribes to a worker's private channel. A failed auth drops the channel
+ * so the next login can retry — pusher-js never retries it itself.
+ */
 export function subscribeUserChannel(adsUserId: number): void {
   if (channels.has(adsUserId)) return;
 
   const pusher = getClient();
   if (!pusher) return;
 
-  const channelName = `App.Models.User.${adsUserId}`;
+  const channelName = `${USER_CHANNEL_PREFIX}${adsUserId}`;
   const channel = pusher.subscribe(channelName);
-  bindSubscriptionLogging(channel, channelName);
+  channels.set(adsUserId, channel);
+
+  channel.bind('pusher:subscription_succeeded', () => {
+    logger.info({ channelName }, 'Pusher channel subscribed');
+  });
+  channel.bind('pusher:subscription_error', (error: unknown) => {
+    logger.error({ channelName, err: error }, 'Pusher channel subscription failed');
+    if (channels.get(adsUserId) !== channel) return;
+    pusher.unsubscribe(channelName);
+    channels.delete(adsUserId);
+  });
+
   channel.bind('application.updated', () => {
     invalidate(adsUserId);
   });
-
-  channels.set(adsUserId, channel);
+  channel.bind('notifications', (data: unknown) => {
+    logger.info({ channelName, data }, 'Received user notification');
+    invalidate(adsUserId);
+    notifyWorkerOfAssignedApplication(adsUserId, data as UserNotificationPayload).catch((error) =>
+      logger.error({ err: error }, 'Error notifying worker of assigned application'),
+    );
+  });
 }
 
 export function unsubscribeUserChannel(adsUserId: number): void {
   const pusher = client;
   if (!pusher) return;
 
-  pusher.unsubscribe(`App.Models.User.${adsUserId}`);
+  pusher.unsubscribe(`${USER_CHANNEL_PREFIX}${adsUserId}`);
   channels.delete(adsUserId);
-}
-
-const APPLICATIONS_CHANNEL = 'private-Twin.Applications';
-
-/**
- * Subscribes once to the shared private applications channel and notifies
- * each newly-created application's assigned worker(s) in their chat.
- *
- * The channel is private, so its auth request borrows a worker's session
- * token. With no active session it's skipped, and a failed auth drops the
- * channel so the next login can retry — pusher-js never retries it itself.
- */
-export function subscribeApplicationCreatedChannel(): void {
-  if (applicationCreatedChannel) return;
-
-  const pusher = getClient();
-  if (!pusher) return;
-
-  if (!getWorkerDatabase().getAnyActiveSessionToken()) {
-    logger.info('No active session — deferring applications channel subscription until login');
-    return;
-  }
-
-  const channel = pusher.subscribe(APPLICATIONS_CHANNEL);
-  applicationCreatedChannel = channel;
-  bindSubscriptionLogging(channel, APPLICATIONS_CHANNEL);
-  channel.bind('pusher:subscription_error', () => {
-    if (applicationCreatedChannel !== channel) return;
-    pusher.unsubscribe(APPLICATIONS_CHANNEL);
-    applicationCreatedChannel = null;
-  });
-  channel.bind('application.created', (data: unknown) => {
-    logger.info({ data }, 'Received application.created event');
-    notifyAssignedWorkersOfNewApplication(data as ApplicationCreatedPayload).catch((error) =>
-      logger.error({ err: error }, 'Error notifying assigned workers of new application'),
-    );
-  });
 }
 
 /**
@@ -149,6 +153,4 @@ export function bootstrapRealtimeSubscriptions(): void {
   } catch (error) {
     logger.error({ err: error }, 'Error bootstrapping Pusher subscriptions');
   }
-
-  subscribeApplicationCreatedChannel();
 }
