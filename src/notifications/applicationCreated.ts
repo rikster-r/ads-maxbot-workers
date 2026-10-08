@@ -2,6 +2,7 @@ import { Keyboard } from '@maxhub/max-bot-api';
 import { bot } from '../bot.js';
 import { getWorkerDatabase } from '../db.js';
 import { logger } from '../logger.js';
+import { formatPriority } from '../constants/requestPriority.js';
 import { getFullHouseAddress } from '../lib/houses.js';
 import { getRequestDetail, type RequestRecord } from '../lib/requestsApi.js';
 
@@ -19,7 +20,7 @@ export function buildAcceptApplicationKeyboard(requestId: number) {
 }
 
 export function formatApplicationAssignedText(message: string, request: RequestRecord): string {
-  const lines: string[] = [message, ''];
+  const lines: string[] = [message, `Приоритет: ${formatPriority(request.priority)}`, ''];
 
   if (request.house) lines.push(`Адрес: ${getFullHouseAddress(request)}`);
   if (request.entrance) lines.push(`Подъезд: ${request.entrance}, этаж: ${request.floor ?? '—'}`);
