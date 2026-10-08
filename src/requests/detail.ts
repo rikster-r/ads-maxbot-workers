@@ -4,10 +4,10 @@ import { logger } from '../logger.js';
 import {
   activeExecutionStatuses,
   completionStatuses,
-  formatStatus,
   inWorkStatuses,
   statusConfig,
 } from '../constants/requestStatus.js';
+import { formatPriority } from '../constants/requestPriority.js';
 import {
   addComment,
   changeRequestStatus,
@@ -48,7 +48,7 @@ function problemText(request: RequestRecord): string | null {
 }
 
 function formatDetailText(request: RequestRecord, blockingRequest: RequestRecord | null): string {
-  const lines: string[] = [`📄 Заявка #${request.id}`, `Статус: ${formatStatus(request.status)}`, ''];
+  const lines: string[] = [`📄 Заявка #${request.id}`, `Приоритет: ${formatPriority(request.priority)}`, ''];
 
   lines.push(`Адрес: ${getFullHouseAddress(request)}`);
   if (request.entrance) lines.push(`Подъезд: ${request.entrance}, этаж: ${request.floor ?? '—'}`);

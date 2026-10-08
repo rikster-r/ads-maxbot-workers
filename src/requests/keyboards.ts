@@ -1,5 +1,6 @@
 import { Keyboard } from '@maxhub/max-bot-api';
-import { statusColor, tabLabels } from '../constants/requestStatus.js';
+import { priorityColor } from '../constants/requestPriority.js';
+import { tabLabels } from '../constants/requestStatus.js';
 import { getFullHouseAddress } from '../lib/houses.js';
 import { getFileKind, type RequestFile, type RequestRecord } from '../lib/requestsApi.js';
 
@@ -21,7 +22,7 @@ export function buildListKeyboard(
 
   const requestRows = requests.map((request) => [
     button.callback(
-      `${statusColor(request.status)} #${request.id} — ${getFullHouseAddress(request)}`,
+      `${priorityColor(request.priority)} #${request.id} — ${getFullHouseAddress(request)}`,
       `ro:${request.id}`,
     ),
   ]);

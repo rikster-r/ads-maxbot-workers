@@ -1,6 +1,5 @@
 import { Keyboard } from '@maxhub/max-bot-api';
 import { bot } from '../bot.js';
-import { formatStatus } from '../constants/requestStatus.js';
 import { getWorkerDatabase } from '../db.js';
 import { logger } from '../logger.js';
 
@@ -41,11 +40,7 @@ export function buildAcceptApplicationKeyboard(requestId: number) {
 }
 
 export function formatApplicationCreatedText(app: ApplicationCreatedRecord): string {
-  const lines: string[] = [
-    `🆕 Новая заявка #${app.id}`,
-    `Статус: ${formatStatus('Отправлено исполнителю')}`,
-    '',
-  ];
+  const lines: string[] = [`🆕 Новая заявка #${app.id}`, ''];
 
   if (app.address) lines.push(`Адрес: ${app.address}`);
   if (app.entrance) lines.push(`Подъезд: ${app.entrance}, этаж: ${app.floor ?? '—'}`);

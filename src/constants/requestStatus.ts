@@ -82,28 +82,6 @@ export const inWorkStatuses: string[] = [
   'На исполнении',
 ];
 
-// Colour markers approximating the CRM palette with the emoji available.
-// New and sent-to-worker share red: from the worker's side they're the same stage.
-// Orange — accepted by worker, blue — travelling, purple — arrived,
-// yellow — in work, green — completed
-const statusColors: Record<string, string> = {
-  Принята: '🔴',
-  'Отправлено исполнителю': '🔴',
-  'Принято исполнителем': '🟠',
-  'В пути': '🔵',
-  Прибыл: '🟣',
-  'На исполнении': '🟡',
-  Выполнена: '🟢',
-};
-
-export function statusColor(status: string): string {
-  return statusColors[status] ?? '⚪';
-}
-
-export function formatStatus(status: string): string {
-  return `${statusColor(status)} ${status}`;
-}
-
 // Statuses that mean the executor is actively on-site — only one request allowed at a time
 export const activeExecutionStatuses: string[] = ['В пути', 'Прибыл', 'На исполнении'];
 
