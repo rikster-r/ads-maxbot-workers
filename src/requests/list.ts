@@ -1,6 +1,6 @@
 import { ackCallback, BotContext } from '../bot.js';
 import { getWorkerDatabase } from '../db.js';
-import { formatPriority } from '../constants/requestPriority.js';
+import { formatPriority, priorityRank } from '../constants/requestPriority.js';
 import { tabLabels, userStatusMap } from '../constants/requestStatus.js';
 import { getFullHouseAddress } from '../lib/houses.js';
 import { getCachedUserRequests } from './cache.js';
@@ -41,7 +41,9 @@ export async function requireFieldWorker(ctx: BotContext): Promise<WorkerSession
 }
 
 function bucketByTab(requests: RequestRecord[], tab: Tab): RequestRecord[] {
-  return requests.filter((r) => userStatusMap[tab].includes(r.status));
+  return requests
+    .filter((r) => userStatusMap[tab].includes(r.status))
+    .sort((a, b) => priorityRank(b.priority) - priorityRank(a.priority) || b.id - a.id);
 }
 
 function formatRequestLine(request: RequestRecord, index: number): string {
