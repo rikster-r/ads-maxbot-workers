@@ -1,4 +1,3 @@
-import 'dotenv/config';
 import { bot } from './setup.js';
 import { logger } from './logger.js';
 import { clearWebhook } from './lib/webhook.js';

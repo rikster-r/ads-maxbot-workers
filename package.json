@@ -5,7 +5,8 @@
   "main": "dist/index.js",
   "scripts": {
     "start": "node dist/index.js",
-    "dev": "nodemon",
+    "dev": "nodemon --exec \"tsx --env-file=.env.development.local src/dev.ts\"",
+    "dev:prod": "nodemon --exec \"tsx --env-file=.env.production.local src/dev.ts\"",
     "build": "tsc"
   },
   "keywords": [],
