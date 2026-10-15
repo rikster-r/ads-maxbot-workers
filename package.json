@@ -15,7 +15,7 @@
   "description": "",
   "dependencies": {
     "@maxhub/max-bot-api": "^0.2.2",
-    "better-sqlite3": "^12.8.0",
+    "better-sqlite3": "^12.11.1",
     "dotenv": "^17.4.1",
     "express": "^5.2.1",
     "pino": "^10.3.1",
